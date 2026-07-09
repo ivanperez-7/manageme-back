@@ -87,7 +87,7 @@ class ProductoAdmin(admin.ModelAdmin):
             )
         }),
         ('Estado y control', {
-            'fields': ('status', 'creado', 'actualizado', 'vida_util'),
+            'fields': ('status', 'creado', 'actualizado', 'vida_util_unidades', 'vida_util_dias'),
         }),
     )
     

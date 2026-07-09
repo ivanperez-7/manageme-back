@@ -80,7 +80,11 @@ class Producto(models.Model):
 
     sku = models.CharField(max_length=255, unique=True)
     min_stock = models.PositiveIntegerField()
-    vida_util = models.PositiveIntegerField(default=1, validators=[MinValueValidator(1)])
+    # Vida útil medida por unidades de uso y/o por días; lo que ocurra primero.
+    # default=1 en unidades para no romper altas sin especificar; poner null explícito
+    # para productos medidos solo por tiempo.
+    vida_util_unidades = models.PositiveIntegerField(default=1, null=True, blank=True, validators=[MinValueValidator(1)])
+    vida_util_dias = models.PositiveIntegerField(null=True, blank=True, validators=[MinValueValidator(1)])
     proveedor = models.ForeignKey(Proveedor, on_delete=models.SET_NULL, null=True, blank=True)
 
     creado = models.DateTimeField(default=timezone.now)
@@ -90,6 +94,12 @@ class Producto(models.Model):
     class Meta:
         verbose_name = 'Producto'
         verbose_name_plural = 'Productos'
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(vida_util_unidades__isnull=False) | models.Q(vida_util_dias__isnull=False),
+                name='producto_vida_util_al_menos_uno',
+            ),
+        ]
     
     def save(self, *args, **kwargs):
         if self.status == 'inactivo' and self.movimientoitem_set.exists():

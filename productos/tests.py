@@ -1,5 +1,6 @@
 from django.contrib.auth.models import User
 from django.urls import reverse
+from django.utils import timezone
 from rest_framework.test import APITestCase, APIRequestFactory
 from rest_framework import status
 
@@ -507,7 +508,7 @@ class CambioAnticipadoTest(APITestCase):
             codigo_interno='P-CA', descripcion='Test CA',
             categoria=self.categoria, unidad_medida='pieza',
             sku='SKU-CA', min_stock=1, proveedor=self.proveedor,
-            vida_util=100,
+            vida_util_unidades=100,
         )
 
         self.lote = Lote.objects.create(
@@ -610,7 +611,7 @@ class RendimientoTest(APITestCase):
             codigo_interno='P-REND', descripcion='Toner Rend',
             categoria=self.categoria, unidad_medida='pieza',
             sku='SKU-REND', min_stock=1, proveedor=self.proveedor,
-            vida_util=100,
+            vida_util_unidades=100,
         )
         self.lote = Lote.objects.create(
             producto=self.producto, codigo_lote='L-REND',
@@ -645,7 +646,7 @@ class RendimientoTest(APITestCase):
 
         fila = response.data[0]
         self.assertEqual(fila['producto_id'], self.producto.pk)
-        self.assertEqual(fila['vida_util'], 100)
+        self.assertEqual(fila['vida_util_unidades'], 100)
         self.assertEqual(fila['ciclos'], 2)
         self.assertEqual(fila['uso_promedio'], 120.0)
         self.assertEqual(fila['ratio'], 1.2)
@@ -656,6 +657,38 @@ class RendimientoTest(APITestCase):
         response = self.client.get('/api/v1/productos/rendimiento/', **self.headers)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data, [])
+
+    def test_rendimiento_calcula_ratio_dias(self):
+        # Producto solo-tiempo: vida_util_dias=30. Entregas a -60, -30, hoy => deltas 30,30
+        # dias_promedio=30, ratio_dias=1.0. Sin vida_util_unidades => ratio=None.
+        prod = Producto.objects.create(
+            codigo_interno='P-DIAS', descripcion='Tambor',
+            categoria=self.categoria, unidad_medida='pieza',
+            sku='SKU-DIAS', min_stock=1, proveedor=self.proveedor,
+            vida_util_unidades=None, vida_util_dias=30,
+        )
+        lote = Lote.objects.create(
+            producto=prod, codigo_lote='L-DIAS', cantidad_inicial=5, sucursal=self.sucursal,
+        )
+        for dias_atras, snap in [(60, 0), (30, 10), (0, 20)]:
+            mov = Movimiento.objects.create(
+                tipo='salida', creado_por=self.admin, sucursal=self.sucursal, aprobado=True,
+                creado=timezone.now() - timezone.timedelta(days=dias_atras),
+            )
+            DetalleSalida.objects.create(movimiento=mov, cliente=self.cliente, subtipo='renta')
+            MovimientoItem.objects.create(
+                movimiento=mov, producto=prod, cantidad=1,
+                lote=lote, equipo_cliente=self.equipo_cliente, contador_uso_snapshot=snap,
+            )
+
+        response = self.client.get('/api/v1/productos/rendimiento/', **self.headers)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        fila = next(f for f in response.data if f['producto_id'] == prod.pk)
+        self.assertEqual(fila['vida_util_dias'], 30)
+        self.assertEqual(fila['ciclos_dias'], 2)
+        self.assertEqual(fila['dias_promedio'], 30.0)
+        self.assertEqual(fila['ratio_dias'], 1.0)
+        self.assertIsNone(fila['ratio'])  # sin vida_util_unidades
 
 
 class ExportacionTest(APITestCase):

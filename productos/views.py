@@ -253,15 +253,23 @@ def exportar_rendimiento_view(request):
         fecha_inicio=request.query_params.get('fechaInicio'),
         fecha_fin=request.query_params.get('fechaFin'),
     )
-    headers = ['Código', 'Descripción', 'Vida útil', 'Ciclos', 'Uso promedio', 'Ratio']
+    headers = [
+        'Código', 'Descripción',
+        'Vida útil (unid)', 'Ciclos', 'Uso promedio', 'Ratio',
+        'Vida útil (días)', 'Ciclos días', 'Días promedio', 'Ratio días',
+    ]
     rows = [
         [
             r['codigo_interno'],
             r['descripcion'],
-            r['vida_util'],
+            r['vida_util_unidades'],
             r['ciclos'],
             r['uso_promedio'],
             r['ratio'],
+            r['vida_util_dias'],
+            r['ciclos_dias'],
+            r['dias_promedio'],
+            r['ratio_dias'],
         ]
         for r in data
     ]

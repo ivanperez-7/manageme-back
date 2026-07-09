@@ -27,7 +27,7 @@ def _create_operativo():
     return user
 
 
-def _create_producto(codigo='P001', vida_util=5):
+def _create_producto(codigo='P001', vida_util_unidades=5, vida_util_dias=None):
     categoria, _ = Categoría.objects.get_or_create(nombre=f'TestCat-{codigo}')
     proveedor, _ = Proveedor.objects.get_or_create(nombre=f'TestProv-{codigo}')
     return Producto.objects.create(
@@ -38,7 +38,8 @@ def _create_producto(codigo='P001', vida_util=5):
         sku=f'SKU-{codigo}',
         min_stock=10,
         proveedor=proveedor,
-        vida_util=vida_util,
+        vida_util_unidades=vida_util_unidades,
+        vida_util_dias=vida_util_dias,
     )
 
 
@@ -160,7 +161,7 @@ class MovimientoModelTest(TestCase):
         self.assertEqual(item.contador_uso_snapshot, 100)
 
     def test_approve_salida_venta_skips_vida_util_check(self):
-        producto = _create_producto(codigo='P002V', vida_util=999)
+        producto = _create_producto(codigo='P002V', vida_util_unidades=999)
         lote = Lote.objects.create(
             producto=producto, codigo_lote='L-VENTA', cantidad_inicial=10, sucursal_id=1
         )
@@ -227,7 +228,7 @@ class MovimientoModelTest(TestCase):
 class MovimientoItemModelTest(TestCase):
     def setUp(self):
         self.admin = _create_admin()
-        self.producto = _create_producto(vida_util=3)
+        self.producto = _create_producto(vida_util_unidades=3)
         self.movimiento = Movimiento.objects.create(tipo='entrada', creado_por=self.admin, sucursal_id=1)
 
     def test_str(self):
@@ -392,6 +393,50 @@ class MovimientoItemModelTest(TestCase):
             equipo_cliente=eq_cli,
         )
 
+        with self.assertRaises(ValueError):
+            item.verificar_vida_util()
+
+    def _setup_dias(self, vida_util_dias, vida_util_unidades, dias_prev):
+        """Crea producto por-tiempo, entrega previa 'dias_prev' días atrás y una
+        entrega actual (hoy). contador_uso no cambia (uso=0) para aislar el eje días."""
+        producto = _create_producto(
+            codigo=f'PD{dias_prev}-{vida_util_dias}',
+            vida_util_unidades=vida_util_unidades, vida_util_dias=vida_util_dias,
+        )
+        cliente = Cliente.objects.create(
+            nombre=f'Cli D{dias_prev}', sucursal=Sucursal.objects.create(nombre=f'Suc D{dias_prev}')
+        )
+        equipo = Equipo.objects.create(nombre=f'EQ-D{dias_prev}', marca=Marca.objects.create(nombre=f'MD{dias_prev}'))
+        eq_cli = EquipoCliente.objects.create(equipo=equipo, cliente=cliente, alias='A', contador_uso=50)
+        lote = Lote.objects.create(producto=producto, codigo_lote=f'LD{dias_prev}', cantidad_inicial=5, sucursal_id=1)
+        for _ in range(5):
+            Unidad.objects.create(lote=lote)
+
+        prev_mov = Movimiento.objects.create(
+            tipo='salida', creado_por=self.admin, aprobado=True, sucursal_id=1,
+            creado=timezone.now() - timezone.timedelta(days=dias_prev),
+        )
+        DetalleSalida.objects.create(movimiento=prev_mov, cliente=cliente, subtipo='renta')
+        MovimientoItem.objects.create(
+            movimiento=prev_mov, producto=producto, cantidad=1,
+            lote=lote, equipo_cliente=eq_cli, contador_uso_snapshot=50,
+        )
+        mov = Movimiento.objects.create(tipo='salida', creado_por=self.admin, sucursal_id=1)
+        DetalleSalida.objects.create(movimiento=mov, cliente=cliente, subtipo='renta')
+        return MovimientoItem.objects.create(
+            movimiento=mov, producto=producto, cantidad=1, lote=lote, equipo_cliente=eq_cli,
+        )
+
+    def test_vida_util_passes_by_dias_when_units_insufficient(self):
+        # unidades=1000 (uso=0, nunca alcanza), dias=30, entrega previa hace 40 días → agotado por días
+        item = self._setup_dias(vida_util_dias=30, vida_util_unidades=1000, dias_prev=40)
+        item.verificar_vida_util()  # no lanza
+        item.refresh_from_db()
+        self.assertEqual(item.contador_uso_snapshot, 50)
+
+    def test_vida_util_raises_when_neither_threshold_reached(self):
+        # unidades=1000 (uso=0) y dias=30 pero solo pasaron 10 días → ninguno alcanzado
+        item = self._setup_dias(vida_util_dias=30, vida_util_unidades=1000, dias_prev=10)
         with self.assertRaises(ValueError):
             item.verificar_vida_util()
 
@@ -718,7 +763,7 @@ class MovimientoViewSetTest(APITestCase):
         url = reverse('movimientos-get-oldest')
         response = self._get(url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data, {'fecha': (timezone.now() - timezone.timedelta(days=100)).date()})
+        self.assertEqual(response.data, (timezone.now() - timezone.timedelta(days=100)).date())
 
     def test_retrieve_returns_movimiento(self):
         movimiento = Movimiento.objects.create(tipo='entrada', creado_por=self.admin, sucursal=self.sucursal)

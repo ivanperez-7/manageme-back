@@ -165,14 +165,28 @@ class MovimientoItem(models.Model):
             movimiento__detalle_salida__cliente=eq_cli.cliente,
             equipo_cliente=eq_cli,
             contador_uso_snapshot__isnull=False
-        ).exclude(pk=self.pk).order_by('-movimiento__creado').first()
+        ).exclude(pk=self.pk).select_related('movimiento').order_by('-movimiento__creado').first()
 
         if ultima:
-            uso_desde_ultima = eq_cli.contador_uso - ultima.contador_uso_snapshot
-            if uso_desde_ultima < producto.vida_util and not self.cambio_anticipado:
+            # Vida útil por unidades y/o por días: se renueva cuando cualquiera se
+            # alcanza (lo que ocurra primero). Bloquea solo si NINGUNO se alcanza.
+            uso_unid = eq_cli.contador_uso - ultima.contador_uso_snapshot
+            dias = (self.movimiento.creado - ultima.movimiento.creado).days
+            vu_unid = producto.vida_util_unidades
+            vu_dias = producto.vida_util_dias
+
+            agotado_unid = vu_unid is not None and uso_unid >= vu_unid
+            agotado_dias = vu_dias is not None and dias >= vu_dias
+
+            if not (agotado_unid or agotado_dias) and not self.cambio_anticipado:
+                faltas = []
+                if vu_unid is not None:
+                    faltas.append(f'{uso_unid}/{vu_unid} unidades')
+                if vu_dias is not None:
+                    faltas.append(f'{dias}/{vu_dias} días')
                 raise ValueError(
-                    f'{producto.codigo_interno} requiere {producto.vida_util} unidades de uso '
-                    f'entre entregas. Solo se han consumido {uso_desde_ultima} desde la última entrega.'
+                    f'{producto.codigo_interno} aún no alcanza su vida útil entre entregas '
+                    f'({"; ".join(faltas)}). Use cambio anticipado para forzar.'
                 )
 
         self.contador_uso_snapshot = eq_cli.contador_uso

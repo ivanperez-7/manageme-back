@@ -79,6 +79,16 @@ class ProductoSerializer(serializers.ModelSerializer):
         fields = '__all__'
         read_only_fields = ['id', 'creado', 'actualizado']
 
+    def validate(self, data):
+        # ≥1 umbral de vida útil (espeja CheckConstraint; devuelve 400 en vez de 500).
+        unidades = data.get('vida_util_unidades', getattr(self.instance, 'vida_util_unidades', None))
+        dias = data.get('vida_util_dias', getattr(self.instance, 'vida_util_dias', None))
+        if unidades is None and dias is None:
+            raise serializers.ValidationError(
+                'Defina al menos vida_util_unidades o vida_util_dias.'
+            )
+        return data
+
     def get_cantidad_disponible(self, instance: Producto):
         if hasattr(instance, 'cantidad_disponible'):
             return instance.cantidad_disponible

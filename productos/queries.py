@@ -79,7 +79,7 @@ def rendimiento_data(sucursal_id, fecha_inicio=None, fecha_fin=None):
             equipo_cliente__isnull=False,
             contador_uso_snapshot__isnull=False,
         )
-        .select_related('producto')
+        .select_related('producto', 'movimiento')
         .order_by('producto_id', 'equipo_cliente_id', 'movimiento__creado')
     )
 
@@ -88,44 +88,62 @@ def rendimiento_data(sucursal_id, fecha_inicio=None, fecha_fin=None):
     if fecha_fin:
         items = items.filter(movimiento__creado__date__lte=fecha_fin)
 
-    # Snapshots agrupados por (producto, equipo_cliente), ya ordenados por fecha.
-    snapshots = defaultdict(list)
+    # Series (fecha, snapshot) por (producto, equipo_cliente), ya ordenadas por fecha.
+    series = defaultdict(list)
     productos_info = {}
     for it in items:
-        snapshots[(it.producto_id, it.equipo_cliente_id)].append(it.contador_uso_snapshot)
+        series[(it.producto_id, it.equipo_cliente_id)].append(
+            (it.movimiento.creado, it.contador_uso_snapshot)
+        )
         productos_info[it.producto_id] = it.producto
 
-    # Deltas consecutivos por producto.
+    # Deltas consecutivos por producto: unidades (snapshot) y días (fecha entrega).
     # TODO: el cálculo no considera la cantidad (MovimientoItem.cantidad) de cada
     # salida. Asume 1 pieza por entrega. Si una salida entrega cantidad > 1, el uso
     # real por pieza sería delta / cantidad_de_la_entrega_previa (las piezas que
     # cubrieron ese intervalo). Definir si las N piezas se consumen juntas o se
     # almacenan antes de hacer el cálculo sensible a la cantidad.
-    deltas_por_producto = defaultdict(list)
-    for (producto_id, _eq), snaps in snapshots.items():
-        for anterior, actual in zip(snaps, snaps[1:]):
-            delta = actual - anterior
-            if delta >= 0:
-                deltas_por_producto[producto_id].append(delta)
+    deltas_unid = defaultdict(list)
+    deltas_dias = defaultdict(list)
+    for (producto_id, _eq), pares in series.items():
+        for (c_ant, s_ant), (c_act, s_act) in zip(pares, pares[1:]):
+            d_unid = s_act - s_ant
+            if d_unid >= 0:
+                deltas_unid[producto_id].append(d_unid)
+            d_dias = (c_act - c_ant).days
+            if d_dias >= 0:
+                deltas_dias[producto_id].append(d_dias)
 
     resultado = []
-    for producto_id, deltas in deltas_por_producto.items():
-        if not deltas:
-            continue
+    for producto_id in set(deltas_unid) | set(deltas_dias):
         producto = productos_info[producto_id]
-        uso_promedio = sum(deltas) / len(deltas)
-        vida_util = producto.vida_util or 1
-        resultado.append({
+        fila = {
             'producto_id': producto_id,
             'codigo_interno': producto.codigo_interno,
             'descripcion': producto.descripcion,
-            'vida_util': producto.vida_util,
-            'ciclos': len(deltas),
-            'uso_promedio': round(uso_promedio, 2),
-            'ratio': round(uso_promedio / vida_util, 2),
-        })
+            'vida_util_unidades': producto.vida_util_unidades,
+            'vida_util_dias': producto.vida_util_dias,
+            'ciclos': 0, 'uso_promedio': None, 'ratio': None,
+            'ciclos_dias': 0, 'dias_promedio': None, 'ratio_dias': None,
+        }
+        du = deltas_unid.get(producto_id)
+        if du and producto.vida_util_unidades:
+            up = sum(du) / len(du)
+            fila['ciclos'] = len(du)
+            fila['uso_promedio'] = round(up, 2)
+            fila['ratio'] = round(up / producto.vida_util_unidades, 2)
+        dd = deltas_dias.get(producto_id)
+        if dd and producto.vida_util_dias:
+            dp = sum(dd) / len(dd)
+            fila['ciclos_dias'] = len(dd)
+            fila['dias_promedio'] = round(dp, 2)
+            fila['ratio_dias'] = round(dp / producto.vida_util_dias, 2)
+        # Incluir solo si se computó al menos un ratio.
+        if fila['ratio'] is not None or fila['ratio_dias'] is not None:
+            resultado.append(fila)
 
-    resultado.sort(key=lambda r: r['ratio'])
+    # Peor rendimiento primero (ratio más bajo disponible).
+    resultado.sort(key=lambda r: r['ratio'] if r['ratio'] is not None else r['ratio_dias'])
     return resultado
 
 

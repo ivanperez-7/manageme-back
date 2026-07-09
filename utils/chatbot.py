@@ -1,5 +1,5 @@
 import os
-from collections import OrderedDict
+from functools import lru_cache
 
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_community.agent_toolkits.sql.toolkit import SQLDatabaseToolkit
@@ -29,11 +29,6 @@ TABLAS_PERMITIDAS = {
 PII_COLUMNAS = frozenset({
     'rfc', 'telefono', 'email', 'direccion',
 })
-
-MAX_CACHED_AGENTS = 20
-
-_agentes = OrderedDict()
-
 
 class _RestrictedQuerySQLDataBaseTool(QuerySQLDataBaseTool):
     def _run(self, query: str, run_manager=None):
@@ -107,12 +102,8 @@ def _build_schema_info(engine):
     return "\n\n".join(lines)
 
 
+@lru_cache(maxsize=20)
 def obtener_agente(branch_id=None):
-    global _agentes
-    if branch_id in _agentes:
-        _agentes.move_to_end(branch_id)
-        return _agentes[branch_id]
-
     api_key = os.getenv('GEMINI_API_KEY')
     if not api_key:
         raise RuntimeError('GEMINI_API_KEY no configurada en el entorno.')
@@ -145,22 +136,19 @@ def obtener_agente(branch_id=None):
     db = SQLDatabase(engine, include_tables=list(TABLAS_PERMITIDAS))
     toolkit = _RestrictedSQLDatabaseToolkit(db=db, llm=llm)
 
-    while len(_agentes) >= MAX_CACHED_AGENTS:
-        _agentes.popitem(last=False)
-
-    _agentes[branch_id] = create_sql_agent(
+    return create_sql_agent(
         llm=llm,
         toolkit=toolkit,
         prefix=prefix,
         verbose=True,
-        handle_parsing_errors=(
-            "Tu respuesta no pudo ser interpretada. "
-            "Responde ÚNICAMENTE con texto plano en español, "
-            "sin ningún formato especial, ni JSON, ni markdown, ni bloques de código."
-        ),
-        max_iterations=10,
-        max_execution_time=60.0,
-        early_stopping_method="generate",
+        agent_executor_kwargs={
+            "handle_parsing_errors": (
+                "Tu respuesta no pudo ser interpretada. "
+                "Responde ÚNICAMENTE con texto plano en español, "
+                "sin ningún formato especial, ni JSON, ni markdown, ni bloques de código."
+            ),
+            "max_iterations": 10,
+            "max_execution_time": 60.0,
+            "early_stopping_method": "generate",
+        },
     )
-
-    return _agentes[branch_id]

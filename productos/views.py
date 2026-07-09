@@ -33,7 +33,7 @@ __all__ = [
 class ProductoViewSet(ActivityLogMixin, viewsets.ModelViewSet):
     serializer_class = ProductoSerializer
     filter_backends = [filters.DjangoFilterBackend]
-    filterset_fields = ['sku', 'categoria', 'equipos__marca', 'equipos']
+    filterset_fields = ['sku', 'categoria', 'equipos__marca', 'equipos', 'proveedor']
 
     def get_queryset(self):
         return productos_queryset(self.request.branch_id)

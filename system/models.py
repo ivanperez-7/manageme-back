@@ -19,6 +19,14 @@ class ConfiguracionSistema(models.Model):
     def __str__(self):
         return f'{self.clave} = {self.valor}'
 
+    @classmethod
+    def get_int(cls, clave, default):
+        """Lee una clave como entero; devuelve default si falta o no es válida."""
+        try:
+            return int(cls.objects.get(clave=clave).valor)
+        except (cls.DoesNotExist, TypeError, ValueError):
+            return default
+
 
 class RegistroActividad(models.Model):
     """Historial de acciones realizadas en el sistema."""

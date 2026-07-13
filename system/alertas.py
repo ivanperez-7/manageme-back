@@ -7,7 +7,7 @@ from movimiento.models import MovimientoItem
 from productos.models import Producto
 from productos.queries import productos_queryset
 
-from .models import AlertaInventario
+from .models import AlertaInventario, ConfiguracionSistema
 
 
 def _crear_si_no_existe(producto, tipo, mensaje, sucursal_id):
@@ -51,12 +51,13 @@ def generar_low_stock(sucursal_id):
 
 
 def generar_old_product(sucursal_id):
-    hace_un_ano = timezone.now() - timedelta(days=365)
+    dias = ConfiguracionSistema.get_int('alerta_old_product_dias', 365)
+    hace_limite = timezone.now() - timedelta(days=dias)
 
     ids_antiguos = set(
         Producto.objects.filter(
             status='activo',
-            lotes__fecha_entrada__lt=hace_un_ano,
+            lotes__fecha_entrada__lt=hace_limite,
             lotes__sucursal=sucursal_id,
             lotes__unidades__status='disponible',
         ).values_list('pk', flat=True).distinct()
@@ -72,7 +73,7 @@ def generar_old_product(sucursal_id):
             AlertaInventario.objects.create(
                 producto=p, tipo_alerta='old_product', sucursal_id=sucursal_id,
                 mensaje=(
-                    f"{p.descripcion} tiene lotes con más de 1 año de antigüedad "
+                    f"{p.descripcion} tiene lotes con más de {dias} días de antigüedad "
                     f"con existencias disponibles."
                 )
             )
@@ -101,6 +102,8 @@ def generar_unusual_movement(sucursal_id):
 
     counts_recientes = {m['producto_id']: m['total'] for m in movs_recientes}
 
+    multiplicador = ConfiguracionSistema.get_int('alerta_unusual_multiplicador', 3)
+
     creadas = 0
     for producto_id, total_actual in counts_recientes.items():
         hist_items = MovimientoItem.objects.filter(
@@ -114,7 +117,7 @@ def generar_unusual_movement(sucursal_id):
 
         hist_promedio = hist_items / 6 if hist_items > 0 else 0
 
-        if hist_promedio > 0 and total_actual > hist_promedio * 3:
+        if hist_promedio > 0 and total_actual > hist_promedio * multiplicador:
             try:
                 producto = Producto.objects.only('pk', 'descripcion').get(pk=producto_id)
             except Producto.DoesNotExist:
@@ -130,7 +133,9 @@ def generar_unusual_movement(sucursal_id):
     return creadas, 0
 
 
-def generar_high_rotation(sucursal_id, top_n=10):
+def generar_high_rotation(sucursal_id, top_n=None):
+    if top_n is None:
+        top_n = ConfiguracionSistema.get_int('alerta_high_rotation_top_n', 10)
     now = timezone.now()
     hace_30_dias = now - timedelta(days=30)
 

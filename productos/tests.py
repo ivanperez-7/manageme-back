@@ -10,7 +10,7 @@ from organizacion.models import Cliente, EquipoCliente, PerfilUsuario, Sucursal
 from .models import Marca, Equipo, Categoría, Proveedor, Producto, Lote, Unidad
 from .serializers import (
     CategoriaSerializer, MarcaSerializer, EquipoSerializer, ProveedorSerializer,
-    ProductoSerializer, LoteSerializer, UnidadSerializer
+    ProductoSerializer, LoteSerializer
 )
 
 
@@ -192,30 +192,6 @@ class LoteSerializerTest(APITestCase):
         self.assertEqual(serializer.data['codigo_lote'], "L003")
 
 
-class UnidadSerializerTest(APITestCase):
-    def test_serializer(self):
-        categoria = Categoría.objects.create(nombre="Papel")
-        proveedor = Proveedor.objects.create(nombre="Proveedor8")
-        producto = Producto.objects.create(
-            codigo_interno="P006",
-            descripcion="Papel Fotográfico",
-            categoria=categoria,
-            unidad_medida="paquete",
-            sku="SKU006",
-            min_stock=8,
-            proveedor=proveedor
-        )
-        lote = Lote.objects.create(
-            producto=producto,
-            codigo_lote="L004",
-            cantidad_inicial=30,
-            sucursal_id=1,
-        )
-        unidad = Unidad.objects.create(lote=lote)
-        serializer = UnidadSerializer(unidad)
-        self.assertEqual(serializer.data['lote'], lote.id)
-
-
 class ProductoViewSetTest(APITestCase):
     def setUp(self):
         self.categoria = Categoría.objects.create(nombre="Accesorios")
@@ -387,40 +363,6 @@ class DashboardViewTest(APITestCase):
 
 
 # ── Additional ViewSet CRUD Tests ─────────────────────────────────────
-
-
-class UnidadViewSetTest(APITestCase):
-    def setUp(self):
-        self.user = User.objects.create_user(username='uuser', password='pass')
-        self.sucursal = Sucursal.objects.create(nombre='Suc Unidad')
-        PerfilUsuario.objects.create(usuario=self.user, rol='admin')
-        self.user.profile.sucursales.add(self.sucursal)
-        self.client.force_login(self.user)
-        self.headers = {'HTTP_X_BRANCH_ID': self.sucursal.id}
-        cat = Categoría.objects.create(nombre='Cat Unidad')
-        prov = Proveedor.objects.create(nombre='Prov Unidad')
-        self.producto = Producto.objects.create(
-            codigo_interno='P-UNI', descripcion='Test', categoria=cat,
-            unidad_medida='pieza', sku='SKU-UNI', min_stock=1, proveedor=prov,
-        )
-        self.lote = Lote.objects.create(producto=self.producto, codigo_lote='L-UNI', cantidad_inicial=5, sucursal=self.sucursal)
-        self.unidad = Unidad.objects.create(lote=self.lote)
-
-    def test_list(self):
-        url = reverse('unidad-list')
-        response = self.client.get(url, **self.headers)
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-
-    def test_retrieve(self):
-        url = reverse('unidad-detail', kwargs={'pk': self.unidad.pk})
-        response = self.client.get(url, **self.headers)
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-
-    def test_create(self):
-        url = reverse('unidad-list')
-        data = {'lote': self.lote.pk}
-        response = self.client.post(url, data, format='json', **self.headers)
-        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
 
 
 class CategoriaViewSetTest(APITestCase):

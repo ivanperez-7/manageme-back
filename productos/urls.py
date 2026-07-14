@@ -7,7 +7,6 @@ from .views import *
 router = routers.DefaultRouter()
 router.register(r'productos', ProductoViewSet, basename='producto')
 router.register(r'lotes', LoteViewSet, basename='lote')
-router.register(r'unidades', UnidadViewSet, basename='unidad')
 router.register(r'categorias', CategoriaViewSet)
 router.register(r'marcas', MarcaViewSet)
 router.register(r'equipos', EquipoViewSet)

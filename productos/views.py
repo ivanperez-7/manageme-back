@@ -5,7 +5,7 @@ from rest_framework import viewsets
 from rest_framework.decorators import action, api_view
 from rest_framework.response import Response
 
-from .models import Categoría, Marca, Proveedor, Equipo, Unidad
+from .models import Categoría, Marca, Proveedor, Equipo
 from .serializers import *
 from movimiento.models import Movimiento, MovimientoItem
 from organizacion.models import Cliente, EquipoCliente
@@ -16,7 +16,6 @@ from utils.mixins import ActivityLogMixin
 __all__ = [
     'ProductoViewSet',
     'LoteViewSet',
-    'UnidadViewSet',
     'CategoriaViewSet',
     'MarcaViewSet',
     'EquipoViewSet',
@@ -60,15 +59,6 @@ class LoteViewSet(ActivityLogMixin, viewsets.ModelViewSet):
 
     def get_queryset(self):
         return lotes_queryset(sucursal_id=self.request.branch_id)
-
-
-class UnidadViewSet(viewsets.ModelViewSet):
-    serializer_class = UnidadSerializer
-
-    def get_queryset(self):
-        return Unidad.objects.exclude(lote__producto__status='inactivo').filter(
-            lote__sucursal=self.request.branch_id
-        ).select_related('lote')
 
 
 class CategoriaViewSet(ActivityLogMixin, viewsets.ModelViewSet):

@@ -10,7 +10,6 @@ __all__ = [
     'ProveedorSerializer',
     'ProductoSerializer',
     'LoteSerializer',
-    'UnidadSerializer',
     'EquipoClienteSerializer',
 ]
 
@@ -118,13 +117,6 @@ class LoteSerializer(serializers.ModelSerializer):
         return instance.unidades.filter(
             status='disponible', lote__sucursal=self.context['request'].branch_id
         ).count()
-
-
-class UnidadSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Unidad
-        fields = '__all__'
-        read_only_fields = ['id', 'actualizado']
 
 
 class EquipoClienteSerializer(serializers.ModelSerializer):

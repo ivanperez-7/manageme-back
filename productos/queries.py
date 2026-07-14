@@ -147,14 +147,6 @@ def rendimiento_data(sucursal_id, fecha_inicio=None, fecha_fin=None):
     return resultado
 
 
-def _config_int(clave, default):
-    try:
-        cfg = ConfiguracionSistema.objects.get(clave=clave)
-        return int(cfg.valor)
-    except (ConfiguracionSistema.DoesNotExist, TypeError, ValueError):
-        return default
-
-
 def reorden_data(sucursal_id):
     """Sugerencias heurísticas de reorden por proveedor.
 
@@ -175,9 +167,9 @@ def reorden_data(sucursal_id):
     REORDEN_MESES_OBJETIVO = 2
     REORDEN_MESES_HISTORIAL = 6
 
-    lead_time = _config_int('reorden_lead_time_dias', REORDEN_LEAD_TIME_DIAS)
-    meses_objetivo = _config_int('reorden_meses_objetivo', REORDEN_MESES_OBJETIVO)
-    meses_historial = _config_int('reorden_meses_historial', REORDEN_MESES_HISTORIAL)
+    lead_time = ConfiguracionSistema.get_int('reorden_lead_time_dias', REORDEN_LEAD_TIME_DIAS)
+    meses_objetivo = ConfiguracionSistema.get_int('reorden_meses_objetivo', REORDEN_MESES_OBJETIVO)
+    meses_historial = ConfiguracionSistema.get_int('reorden_meses_historial', REORDEN_MESES_HISTORIAL)
 
     desde = timezone.now() - timedelta(days=30 * meses_historial)
 

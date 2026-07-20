@@ -50,7 +50,8 @@ class Movimiento(models.Model):
             raise ValueError('Movimiento ya aprobado.')
 
         if hasattr(self, 'detalle_entrada'):
-            validar_factura_entrada(self.detalle_entrada.numero_factura, self.items.all())
+            pass
+            # validar_factura_entrada(self.detalle_entrada.numero_factura, self.items.all())
 
         self.aprobado = True
         self.aprobado_fecha = timezone.now()

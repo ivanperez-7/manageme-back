@@ -102,6 +102,7 @@ class Producto(models.Model):
         ]
     
     def save(self, *args, **kwargs):
+        self.sku = self.sku.upper()
         if self.status == 'inactivo' and self.movimientoitem_set.exists():
             raise ValueError('No se puede desactivar producto utilizado en movimientos.')
         return super().save(*args, **kwargs)

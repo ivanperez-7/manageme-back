@@ -25,7 +25,7 @@ def generar_low_stock(sucursal_id):
     productos = productos_queryset(sucursal_id=sucursal_id)
 
     ids_bajos = set(
-        productos.filter(cantidad_disponible__lt=F('min_stock'))
+        productos.filter(cantidad_disponible__lte=F('min_stock'))
         .values_list('pk', flat=True)
     )
 

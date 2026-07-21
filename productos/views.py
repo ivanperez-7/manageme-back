@@ -170,7 +170,7 @@ def dashboard_view(request):
                 .order_by('-total_movimientos')[:10]
             ),
             'productosBajos': (
-                productos.filter(cantidad_disponible__lt=F('min_stock'))
+                productos.filter(cantidad_disponible__lte=F('min_stock'))
                 .order_by('-cantidad_disponible')
                 .values('id', 'descripcion', 'categoria__nombre', 'cantidad_disponible', 'min_stock')
             ),

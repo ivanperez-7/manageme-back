@@ -153,7 +153,7 @@ def reorden_data(sucursal_id):
     NO es predicción con IA: se basa en el consumo promedio mensual histórico.
         consumo_mensual = unidades salidas aprobadas en los últimos N meses / N
         dias_cobertura  = cantidad_disponible / (consumo_mensual / 30)
-        sugerir si: cantidad_disponible < min_stock  O  dias_cobertura < lead_time
+        sugerir si: cantidad_disponible <= min_stock  O  dias_cobertura < lead_time
         cantidad_sugerida = consumo_mensual * meses_objetivo - cantidad_disponible
 
     Parámetros configurables vía ConfiguracionSistema (claves):
@@ -199,7 +199,7 @@ def reorden_data(sucursal_id):
         else:
             dias_cobertura = float('inf')
 
-        bajo_minimo = p.cantidad_disponible < p.min_stock
+        bajo_minimo = p.cantidad_disponible <= p.min_stock
         sin_cobertura = dias_cobertura < lead_time
         if not (bajo_minimo or sin_cobertura):
             continue

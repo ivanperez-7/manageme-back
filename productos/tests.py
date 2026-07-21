@@ -294,6 +294,38 @@ class ProductoModelSaveTest(APITestCase):
         producto.refresh_from_db()
         self.assertEqual(producto.status, 'inactivo')
 
+    def test_save_uppercases_sku(self):
+        categoria = Categoría.objects.create(nombre="Consumibles3")
+        proveedor = Proveedor.objects.create(nombre="Prov SKU")
+        producto = Producto.objects.create(
+            codigo_interno="P-SKU",
+            descripcion="Test SKU",
+            categoria=categoria,
+            unidad_medida="pieza",
+            sku="sku-test-123",
+            min_stock=5,
+            proveedor=proveedor,
+        )
+        producto.refresh_from_db()
+        self.assertEqual(producto.sku, "SKU-TEST-123")
+
+    def test_save_uppercases_sku_on_update(self):
+        categoria = Categoría.objects.create(nombre="Consumibles4")
+        proveedor = Proveedor.objects.create(nombre="Prov SKU2")
+        producto = Producto.objects.create(
+            codigo_interno="P-SKU2",
+            descripcion="Test SKU Update",
+            categoria=categoria,
+            unidad_medida="pieza",
+            sku="SKU-KEEP",
+            min_stock=5,
+            proveedor=proveedor,
+        )
+        producto.sku = "sku-updated"
+        producto.save()
+        producto.refresh_from_db()
+        self.assertEqual(producto.sku, "SKU-UPDATED")
+
 
 # ── EquipoViewSet Custom Actions ──────────────────────────────────────
 

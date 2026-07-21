@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import Marca, Categoría, Proveedor, Producto, Equipo
+from .models import Marca, Categoría, Proveedor, Producto, Equipo, ProductoStock
 
 
 class EquipoInline(admin.TabularInline):
@@ -49,8 +49,15 @@ class ProveedorAdmin(admin.ModelAdmin):
     )
 
 
+class ProductoStockInline(admin.TabularInline):
+    model = ProductoStock
+    extra = 1
+    autocomplete_fields = ('sucursal',)
+
+
 @admin.register(Producto)
 class ProductoAdmin(admin.ModelAdmin):
+    inlines = [ProductoStockInline]
     """Gestión del catálogo de productos."""
     list_display = (
         'codigo_interno',

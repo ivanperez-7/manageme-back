@@ -1,7 +1,6 @@
 from datetime import date
 
 from django.db.models import Prefetch
-from django.http import HttpResponse
 from django_filters import rest_framework as filters
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
@@ -9,11 +8,9 @@ from rest_framework.response import Response
 
 from .models import Movimiento, MovimientoItem
 from .serializers import MovimientoSerializer
-from productos.models import Lote
 from system.models import RegistroActividad
 from utils.exports import xlsx_response
 from utils.mixins import ActivityLogMixin
-from utils.pdf_barcodes import generate_lot_labels_pdf
 
 
 class MovimientoViewSet(ActivityLogMixin, viewsets.ModelViewSet):
@@ -24,7 +21,7 @@ class MovimientoViewSet(ActivityLogMixin, viewsets.ModelViewSet):
     ).prefetch_related(
         Prefetch(
             'items',
-            queryset=MovimientoItem.objects.select_related('producto', 'lote', 'equipo_cliente')
+            queryset=MovimientoItem.objects.select_related('producto', 'equipo_cliente')
         )
     ).distinct()
     
@@ -105,19 +102,4 @@ class MovimientoViewSet(ActivityLogMixin, viewsets.ModelViewSet):
             return Response(oldest.creado.date())
         return Response(date.today())
 
-    @action(detail=True, methods=['get'])
-    def etiquetas(self, request, pk=None):
-        movimiento = self.get_object()
-        
-        if movimiento.tipo != 'entrada':
-            return Response({'detail': 'Solo movimientos de entrada tienen etiquetas.'}, status=400)
-        if not movimiento.aprobado:
-            return Response({'detail': 'El movimiento debe estar aprobado.'}, status=400)
 
-        lotes = Lote.objects.filter(movimientoitem__movimiento=movimiento)
-        if not lotes.exists():
-            return Response({'detail': 'No se encontraron lotes para este movimiento.'}, status=404)
-
-        pdf_bytes = generate_lot_labels_pdf(lotes)
-        return HttpResponse(pdf_bytes, content_type='application/pdf',
-                            headers={'Content-Disposition': f'attachment; filename="etiquetas-movimiento-{pk}.pdf"'})

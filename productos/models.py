@@ -1,5 +1,3 @@
-import uuid
-
 from django.core.validators import MinValueValidator
 from django.db import models
 from django.utils import timezone
@@ -111,34 +109,15 @@ class Producto(models.Model):
         return f'{self.codigo_interno} ({self.descripcion})'
 
 
-class Lote(models.Model):
-    producto = models.ForeignKey(Producto, on_delete=models.CASCADE, related_name='lotes')
-    codigo_lote = models.CharField(max_length=100, unique=True)
-    sucursal = models.ForeignKey('organizacion.Sucursal', on_delete=models.PROTECT, related_name='lotes')
-
-    cantidad_inicial = models.PositiveIntegerField()
-
-    fecha_entrada = models.DateTimeField(default=timezone.now)
-    creado = models.DateTimeField(default=timezone.now)
-    actualizado = models.DateTimeField(auto_now=True)
+class ProductoStock(models.Model):
+    producto = models.ForeignKey(Producto, on_delete=models.CASCADE, related_name='stock')
+    sucursal = models.ForeignKey('organizacion.Sucursal', on_delete=models.PROTECT, related_name='stock')
+    cantidad = models.PositiveIntegerField(default=0)
 
     class Meta:
-        verbose_name = 'Lote'
-        verbose_name_plural = 'Lotes'
-    
-    def __str__(self):
-        return self.codigo_lote
-
-
-class Unidad(models.Model):
-    lote = models.ForeignKey(Lote, on_delete=models.CASCADE, related_name='unidades')
-    codigo_unidad = models.CharField(max_length=100, unique=True, default=uuid.uuid4)
-    status = models.CharField(max_length=20, default='disponible')
-    actualizado = models.DateTimeField(auto_now=True)
-
-    class Meta:
-        verbose_name = 'Unidad'
-        verbose_name_plural = 'Unidades'
+        unique_together = ('producto', 'sucursal')
+        verbose_name = 'Stock de producto'
+        verbose_name_plural = 'Stocks de productos'
 
     def __str__(self):
-        return f'Unidad de {self.lote.producto.codigo_interno}, lote {self.lote.codigo_lote}: {self.codigo_unidad}'
+        return f'{self.producto.codigo_interno} @ sucursal {self.sucursal_id}: {self.cantidad} uds'

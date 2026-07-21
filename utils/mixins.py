@@ -12,7 +12,7 @@ class ActivityLogMixin:
     verbs = {'create': 'Creó', 'update': 'Modificó', 'delete': 'Eliminó'}
 
     # Modelos cuyo verbose_name lleva artículo femenino
-    _feminine = {'categoría', 'marca', 'unidad', 'sucursal'}
+    _feminine = {'categoría', 'marca', 'sucursal'}
 
     def _article(self, instance):
         name = instance._meta.verbose_name.lower()

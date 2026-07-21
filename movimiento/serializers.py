@@ -6,7 +6,7 @@ from shapeless_serializers.serializers import InlineShapelessModelSerializer
 from .models import Movimiento, MovimientoItem, DetalleEntrada, DetalleSalida
 from organizacion.models import Cliente, EquipoCliente
 from organizacion.serializers import UserSerializer
-from productos.models import Lote, Producto
+from productos.models import Producto, ProductoStock
 
 
 class MovimientoItemSerializer(serializers.ModelSerializer):
@@ -17,15 +17,6 @@ class MovimientoItemSerializer(serializers.ModelSerializer):
         queryset=Producto.objects.all().select_related('categoria', 'proveedor'),
         write_only=True,
         source='producto'
-    )
-    lote = InlineShapelessModelSerializer(
-        model=Lote, fields=['id', 'codigo_lote', 'fecha_entrada'], read_only=True
-    )
-    lote_id = serializers.PrimaryKeyRelatedField(
-        queryset=Lote.objects.all().select_related('producto'),
-        write_only=True,
-        required=False,
-        source='lote'
     )
     equipo_cliente = InlineShapelessModelSerializer(
         model=EquipoCliente, fields=['id', 'alias', 'contador_uso'], read_only=True
@@ -50,9 +41,6 @@ class MovimientoItemSerializer(serializers.ModelSerializer):
             self.fields['equipo_cliente_id'].queryset = EquipoCliente.objects.filter(
                 cliente__sucursal=request.branch_id
             ).select_related('cliente', 'equipo')
-            self.fields['lote_id'].queryset = Lote.objects.filter(
-                sucursal=request.branch_id
-            ).select_related('producto')
 
     def validate(self, data):
         if data.get('cambio_anticipado') and not (data.get('motivo_cambio') or '').strip():
@@ -138,12 +126,15 @@ class MovimientoSerializer(WritableNestedModelSerializer):
 
             es_renta = data['detalle_salida'].get('subtipo') == 'renta'
 
-            # Chequeo de disponibilidad de unidades para cada item
+            # Chequeo de disponibilidad de stock para cada item
             for item in data['items']:
-                count = item['lote'].unidades.filter(status='disponible').count()
-                if count < item['cantidad']:
+                stock = ProductoStock.objects.filter(
+                    producto=item['producto'],
+                    sucursal=data.get('sucursal_id', self.context['request'].branch_id),
+                ).values_list('cantidad', flat=True).first() or 0
+                if stock < item['cantidad']:
                     raise serializers.ValidationError(
-                        f'No hay suficientes unidades disponibles ({count}) en el lote {item["lote"].codigo_lote} para la salida.'
+                        f'No hay suficientes unidades disponibles ({stock}) de {item["producto"].codigo_interno} en esta sucursal.'
                     )
 
                 # Renta requiere equipo_cliente; venta lo deja opcional.

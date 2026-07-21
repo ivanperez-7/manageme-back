@@ -122,7 +122,6 @@ class AlertaViewSet(viewsets.ModelViewSet):
         from .alertas import (
             generar_high_rotation,
             generar_low_stock,
-            generar_old_product,
             generar_unusual_movement,
         )
 
@@ -132,10 +131,6 @@ class AlertaViewSet(viewsets.ModelViewSet):
         total_resueltas = 0
 
         c, r = generar_low_stock(sucursal_id=branch_id)
-        total_creadas += c
-        total_resueltas += r
-
-        c, r = generar_old_product(sucursal_id=branch_id)
         total_creadas += c
         total_resueltas += r
 

@@ -5,20 +5,18 @@ from django.db.models import Count, OuterRef, Subquery, IntegerField, Value, Pre
 from django.db.models.functions import Coalesce
 from django.utils import timezone
 
-from .models import Lote, Producto, Unidad, Equipo
+from .models import Producto, ProductoStock, Equipo
 from movimiento.models import MovimientoItem
 from system.models import ConfiguracionSistema
 
 
 def productos_queryset(sucursal_id=None):
-    unidades_subquery = (
-        Unidad.objects.filter(lote__producto=OuterRef('pk'), status='disponible')
-        .values('lote__producto')
-        .annotate(total=Count('id'))
+    stock_subquery = ProductoStock.objects.filter(
+        producto=OuterRef('pk'),
     )
 
     if sucursal_id is not None:
-        unidades_subquery = unidades_subquery.filter(lote__sucursal=sucursal_id)
+        stock_subquery = stock_subquery.filter(sucursal=sucursal_id)
 
     return (
         Producto.objects.exclude(status='inactivo')
@@ -31,29 +29,10 @@ def productos_queryset(sucursal_id=None):
         )
         .annotate(
             cantidad_disponible=Coalesce(
-                Subquery(unidades_subquery.values('total'), output_field=IntegerField()),
+                Subquery(stock_subquery.values('cantidad')[:1], output_field=IntegerField()),
                 Value(0)
             )
         )
-    )
-
-
-def lotes_queryset(sucursal_id=None):
-    qs = Lote.objects.exclude(producto__status='inactivo')
-
-    if sucursal_id is not None:
-        qs = qs.filter(sucursal=sucursal_id)
-
-    return (
-        qs
-        .select_related('producto')
-        .prefetch_related(
-            Prefetch(
-                'producto__equipos',
-                queryset=Equipo.objects.filter(activo=True, marca__activo=True).select_related('marca')
-            ),
-        )
-        .annotate(cantidad_restante=Count('unidades', filter=Q(unidades__status='disponible')))
     )
 
 

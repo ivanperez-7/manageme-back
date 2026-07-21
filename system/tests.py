@@ -183,11 +183,10 @@ class AlertaViewSetTest(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_405_METHOD_NOT_ALLOWED)
 
     @patch('system.alertas.generar_low_stock', return_value=(0, 0))
-    @patch('system.alertas.generar_old_product', return_value=(0, 0))
     @patch('system.alertas.generar_unusual_movement', return_value=(0, 0))
     @patch('system.alertas.generar_high_rotation', return_value=(0, 0))
     def test_refrescar_runs_all_generators(
-        self, mock_hr, mock_um, mock_op, mock_ls
+        self, mock_hr, mock_um, mock_ls
     ):
         url = reverse('alertas-refrescar')
         response = self.client.post(url, **self.headers)
@@ -196,7 +195,6 @@ class AlertaViewSetTest(APITestCase):
         self.assertIn('resueltas', response.data)
         self.assertIn('no_leidas', response.data)
         mock_ls.assert_called_once_with(sucursal_id=self.sucursal.id)
-        mock_op.assert_called_once_with(sucursal_id=self.sucursal.id)
         mock_um.assert_called_once_with(sucursal_id=self.sucursal.id)
         mock_hr.assert_called_once_with(sucursal_id=self.sucursal.id)
 

@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from .models import Producto, Categoría, Marca, Proveedor, Equipo, Lote, Unidad
+from .models import Producto, Categoría, Marca, Proveedor, Equipo, ProductoStock
 from organizacion.models import EquipoCliente
 
 __all__ = [
@@ -9,7 +9,6 @@ __all__ = [
     'EquipoSerializer',
     'ProveedorSerializer',
     'ProductoSerializer',
-    'LoteSerializer',
     'EquipoClienteSerializer',
 ]
 
@@ -91,32 +90,11 @@ class ProductoSerializer(serializers.ModelSerializer):
     def get_cantidad_disponible(self, instance: Producto):
         if hasattr(instance, 'cantidad_disponible'):
             return instance.cantidad_disponible
-        
-        return Unidad.objects.filter(
-            lote__producto=instance, status='disponible', lote__sucursal=self.context['request'].branch_id
-        ).count()
 
-
-class LoteSerializer(serializers.ModelSerializer):
-    class InlineProductoSerializer(ProductoSerializer):
-        class Meta(ProductoSerializer.Meta):
-            fields = ['id', 'codigo_interno', 'descripcion', 'equipos']
-
-    cantidad_restante = serializers.SerializerMethodField()
-    producto = InlineProductoSerializer(read_only=True)
-
-    class Meta:
-        model = Lote
-        fields = '__all__'
-        read_only_fields = ['id', 'creado', 'actualizado']
-    
-    def get_cantidad_restante(self, instance: Lote):
-        if hasattr(instance, 'cantidad_restante'):
-            return instance.cantidad_restante
-        
-        return instance.unidades.filter(
-            status='disponible', lote__sucursal=self.context['request'].branch_id
-        ).count()
+        return ProductoStock.objects.filter(
+            producto=instance,
+            sucursal=self.context['request'].branch_id,
+        ).values_list('cantidad', flat=True).first() or 0
 
 
 class EquipoClienteSerializer(serializers.ModelSerializer):

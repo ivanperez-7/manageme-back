@@ -1,7 +1,6 @@
 from django.contrib import admin
-from django.db.models import Count, Q
 
-from .models import Marca, Categoría, Proveedor, Producto, Equipo, Lote, Unidad
+from .models import Marca, Categoría, Proveedor, Producto, Equipo
 
 
 class EquipoInline(admin.TabularInline):
@@ -93,44 +92,3 @@ class ProductoAdmin(admin.ModelAdmin):
     
     def equipos_list(self, obj: Producto):
         return ', '.join([equipo.nombre for equipo in obj.equipos.all()]) if obj.equipos.exists() else '-'
-
-
-@admin.register(Lote)
-class LoteAdmin(admin.ModelAdmin):
-    list_display = (
-        'codigo_lote',
-        'producto',
-        'cantidad_inicial',
-        'cantidad_restante',
-        'fecha_entrada',
-    )
-    search_fields = ('codigo_lote', 'producto__codigo_interno')
-    list_filter = ('producto__categoria', 'producto__equipos__marca')
-    autocomplete_fields = ('producto',)
-    readonly_fields = ('creado', 'actualizado')
-    ordering = ('-fecha_entrada',)
-
-    def cantidad_restante(self, obj: Lote):
-        return obj.cantidad_restante
-    
-    def get_queryset(self, request):
-        qs = super().get_queryset(request)
-        return qs.annotate(cantidad_restante=Count('unidades', filter=Q(unidades__status='disponible')))
-
-
-@admin.register(Unidad)
-class UnidadAdmin(admin.ModelAdmin):
-    list_display = (
-        'codigo_unidad',
-        'lote',
-        'producto',
-        'status',
-        'actualizado',
-    )
-    search_fields = ('codigo_unidad', 'lote__codigo_lote', 'lote__producto__codigo_interno')
-    list_filter = ('status', 'lote__producto__categoria')
-    autocomplete_fields = ('lote',)
-    readonly_fields = ('actualizado',)
-
-    def producto(self, obj):
-        return obj.lote.producto

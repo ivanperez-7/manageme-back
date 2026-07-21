@@ -7,10 +7,10 @@ from rest_framework import status
 from movimiento.models import Movimiento, MovimientoItem, DetalleSalida
 from system.models import RegistroActividad
 from organizacion.models import Cliente, EquipoCliente, PerfilUsuario, Sucursal
-from .models import Marca, Equipo, Categoría, Proveedor, Producto, Lote, Unidad
+from .models import Marca, Equipo, Categoría, Proveedor, Producto, ProductoStock
 from .serializers import (
     CategoriaSerializer, MarcaSerializer, EquipoSerializer, ProveedorSerializer,
-    ProductoSerializer, LoteSerializer
+    ProductoSerializer
 )
 
 
@@ -61,49 +61,7 @@ class ProductoModelTest(APITestCase):
         self.assertEqual(str(producto), "P001 (Cartucho Negro)")
 
 
-class LoteModelTest(APITestCase):
-    def test_str(self):
-        categoria = Categoría.objects.create(nombre="Cartuchos")
-        proveedor = Proveedor.objects.create(nombre="Proveedor3")
-        producto = Producto.objects.create(
-            codigo_interno="P002",
-            descripcion="Cartucho Color",
-            categoria=categoria,
-            unidad_medida="pieza",
-            sku="SKU002",
-            min_stock=5,
-            proveedor=proveedor
-        )
-        lote = Lote.objects.create(
-            producto=producto,
-            codigo_lote="L001",
-            cantidad_inicial=100,
-            sucursal_id=1,
-        )
-        self.assertEqual(str(lote), "L001")
 
-
-class UnidadModelTest(APITestCase):
-    def test_str(self):
-        categoria = Categoría.objects.create(nombre="Cartuchos")
-        proveedor = Proveedor.objects.create(nombre="Proveedor4")
-        producto = Producto.objects.create(
-            codigo_interno="P003",
-            descripcion="Cartucho XL",
-            categoria=categoria,
-            unidad_medida="pieza",
-            sku="SKU003",
-            min_stock=3,
-            proveedor=proveedor
-        )
-        lote = Lote.objects.create(
-            producto=producto,
-            codigo_lote="L002",
-            cantidad_inicial=50,
-            sucursal_id=1,
-        )
-        unidad = Unidad.objects.create(lote=lote)
-        self.assertIn("Unidad de P003, lote L002:", str(unidad))
 
 
 class CategoriaSerializerTest(APITestCase):
@@ -162,34 +120,7 @@ class ProductoSerializerTest(APITestCase):
         self.assertEqual(serializer.data['proveedor']['nombre'], "Proveedor6")
 
 
-class LoteSerializerTest(APITestCase):
-    def test_serializer(self):
-        categoria = Categoría.objects.create(nombre="Papel")
-        proveedor = Proveedor.objects.create(nombre="Proveedor7")
-        producto = Producto.objects.create(
-            codigo_interno="P005",
-            descripcion="Papel Reciclado",
-            categoria=categoria,
-            unidad_medida="paquete",
-            sku="SKU005",
-            min_stock=15,
-            proveedor=proveedor
-        )
-        sucursal = Sucursal.objects.create(nombre="Suc Lote Test")
-        lote = Lote.objects.create(
-            producto=producto,
-            codigo_lote="L003",
-            cantidad_inicial=200,
-            sucursal=sucursal,
-        )
-        user = _create_operativo()
 
-        factory = APIRequestFactory()
-        request = factory.post('/')
-        request.user = user
-        request.branch_id = 1
-        serializer = LoteSerializer(lote, context={'request': request})
-        self.assertEqual(serializer.data['codigo_lote'], "L003")
 
 
 class ProductoViewSetTest(APITestCase):
@@ -219,37 +150,7 @@ class ProductoViewSetTest(APITestCase):
         self.assertEqual(response.data[0]['codigo_interno'], "P007")
 
 
-class LoteViewSetTest(APITestCase):
-    def setUp(self):
-        self.categoria = Categoría.objects.create(nombre="Accesorios")
-        self.proveedor = Proveedor.objects.create(nombre="Proveedor10")
-        self.producto = Producto.objects.create(
-            codigo_interno="P008",
-            descripcion="Cable HDMI",
-            categoria=self.categoria,
-            unidad_medida="pieza",
-            sku="SKU008",
-            min_stock=30,
-            proveedor=self.proveedor
-        )
-        self.sucursal = Sucursal.objects.create(nombre="Sucursal Test 2")
-        self.lote = Lote.objects.create(
-            producto=self.producto,
-            codigo_lote="L005",
-            cantidad_inicial=60,
-            sucursal=self.sucursal,
-        )
 
-    def test_list(self):
-        user = User.objects.create_user(username='testuser', password='testpass')
-        PerfilUsuario.objects.create(usuario=user, rol='admin')
-        user.profile.sucursales.add(self.sucursal)
-        self.client.force_login(user)
-
-        url = reverse('lote-list')
-        response = self.client.get(url, HTTP_X_BRANCH_ID=self.sucursal.id)
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data[0]['codigo_lote'], "L005")
 
 
 # ── Additional Product Model Tests ────────────────────────────────────
@@ -388,7 +289,6 @@ class DashboardViewTest(APITestCase):
         response = self.client.get('/api/v1/productos/dashboard/', **self.headers)
         stats = response.data['stats']
         self.assertEqual(stats['productos'], 0)
-        self.assertEqual(stats['lotes'], 0)
         self.assertEqual(stats['categorias'], 0)
         self.assertEqual(stats['proveedores'], 0)
         self.assertEqual(stats['clientes'], 0)
@@ -485,11 +385,9 @@ class CambioAnticipadoTest(APITestCase):
             vida_util_unidades=100,
         )
 
-        self.lote = Lote.objects.create(
-            producto=self.producto, codigo_lote='L-CA',
-            cantidad_inicial=5, sucursal=self.sucursal,
+        ProductoStock.objects.create(
+            producto=self.producto, sucursal=self.sucursal, cantidad=5,
         )
-        Unidad.objects.bulk_create([Unidad(lote=self.lote) for _ in range(5)])
 
         self.cliente = Cliente.objects.create(nombre='Cli CA', sucursal=self.sucursal)
         self.equipo_cliente = EquipoCliente.objects.create(
@@ -503,7 +401,7 @@ class CambioAnticipadoTest(APITestCase):
         DetalleSalida.objects.create(movimiento=prior_mov, cliente=self.cliente, tecnico='Prior', subtipo='renta')
         MovimientoItem.objects.create(
             movimiento=prior_mov, producto=self.producto, cantidad=1,
-            lote=self.lote, equipo_cliente=self.equipo_cliente,
+            equipo_cliente=self.equipo_cliente,
             contador_uso_snapshot=0,
         )
 
@@ -514,7 +412,6 @@ class CambioAnticipadoTest(APITestCase):
         item_data = {
             'producto_id': self.producto.pk,
             'cantidad': 1,
-            'lote_id': self.lote.pk,
             'equipo_cliente_id': self.equipo_cliente.pk,
         }
         if extra_item_data:
@@ -587,9 +484,8 @@ class RendimientoTest(APITestCase):
             sku='SKU-REND', min_stock=1, proveedor=self.proveedor,
             vida_util_unidades=100,
         )
-        self.lote = Lote.objects.create(
-            producto=self.producto, codigo_lote='L-REND',
-            cantidad_inicial=5, sucursal=self.sucursal,
+        ProductoStock.objects.create(
+            producto=self.producto, sucursal=self.sucursal, cantidad=5,
         )
         self.cliente = Cliente.objects.create(nombre='Cli Rend', sucursal=self.sucursal)
         self.equipo_cliente = EquipoCliente.objects.create(
@@ -604,7 +500,7 @@ class RendimientoTest(APITestCase):
         DetalleSalida.objects.create(movimiento=mov, cliente=self.cliente)
         MovimientoItem.objects.create(
             movimiento=mov, producto=self.producto, cantidad=1,
-            lote=self.lote, equipo_cliente=self.equipo_cliente,
+            equipo_cliente=self.equipo_cliente,
             contador_uso_snapshot=snapshot,
         )
 
@@ -641,9 +537,7 @@ class RendimientoTest(APITestCase):
             sku='SKU-DIAS', min_stock=1, proveedor=self.proveedor,
             vida_util_unidades=None, vida_util_dias=30,
         )
-        lote = Lote.objects.create(
-            producto=prod, codigo_lote='L-DIAS', cantidad_inicial=5, sucursal=self.sucursal,
-        )
+        ProductoStock.objects.create(producto=prod, sucursal=self.sucursal, cantidad=5)
         for dias_atras, snap in [(60, 0), (30, 10), (0, 20)]:
             mov = Movimiento.objects.create(
                 tipo='salida', creado_por=self.admin, sucursal=self.sucursal, aprobado=True,
@@ -652,7 +546,7 @@ class RendimientoTest(APITestCase):
             DetalleSalida.objects.create(movimiento=mov, cliente=self.cliente, subtipo='renta')
             MovimientoItem.objects.create(
                 movimiento=mov, producto=prod, cantidad=1,
-                lote=lote, equipo_cliente=self.equipo_cliente, contador_uso_snapshot=snap,
+                equipo_cliente=self.equipo_cliente, contador_uso_snapshot=snap,
             )
 
         response = self.client.get('/api/v1/productos/rendimiento/', **self.headers)
@@ -683,11 +577,9 @@ class ExportacionTest(APITestCase):
             categoria=self.categoria, unidad_medida='pieza',
             sku='SKU-EXP', min_stock=2, proveedor=self.proveedor,
         )
-        self.lote = Lote.objects.create(
-            producto=self.producto, codigo_lote='L-EXP',
-            cantidad_inicial=3, sucursal=self.sucursal,
+        ProductoStock.objects.create(
+            producto=self.producto, sucursal=self.sucursal, cantidad=3,
         )
-        Unidad.objects.bulk_create([Unidad(lote=self.lote) for _ in range(3)])
 
     def _load(self, response):
         from openpyxl import load_workbook
@@ -736,11 +628,9 @@ class ReordenTest(APITestCase):
             categoria=self.categoria, unidad_medida='pieza',
             sku=f'SKU-{codigo}', min_stock=min_stock, proveedor=self.proveedor,
         )
-        lote = Lote.objects.create(
-            producto=producto, codigo_lote=f'L-{codigo}',
-            cantidad_inicial=disponibles, sucursal=self.sucursal,
+        ProductoStock.objects.create(
+            producto=producto, sucursal=self.sucursal, cantidad=disponibles,
         )
-        Unidad.objects.bulk_create([Unidad(lote=lote) for _ in range(disponibles)])
         return producto
 
     def _consumo(self, producto, cantidad):

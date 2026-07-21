@@ -1,11 +1,10 @@
-import uuid
-
 from django.contrib.auth.models import User
 from django.db import models, transaction
+from django.db.models import F
 from django.utils import timezone
 
 from organizacion.models import Cliente, EquipoCliente
-from productos.models import Producto, Lote, Unidad
+from productos.models import Producto, ProductoStock
 from utils.validators import validar_factura_entrada
 
 
@@ -61,13 +60,29 @@ class Movimiento(models.Model):
         # Procesar cada item según el tipo de movimiento
         if hasattr(self, 'detalle_entrada'):
             for item in self.items.all():
-                item.crear_lote()
+                stock, _ = ProductoStock.objects.select_for_update().get_or_create(
+                    producto=item.producto,
+                    sucursal=self.sucursal,
+                    defaults={'cantidad': 0},
+                )
+                stock.cantidad = F('cantidad') + item.cantidad
+                stock.save(update_fields=['cantidad'])
         elif hasattr(self, 'detalle_salida'):
             es_renta = self.detalle_salida.subtipo == 'renta'
             for item in self.items.all():
                 if es_renta:
                     item.verificar_vida_util()
-                item.asignar_unidades()
+                stock = ProductoStock.objects.select_for_update().get(
+                    producto=item.producto,
+                    sucursal=self.sucursal,
+                )
+                if stock.cantidad < item.cantidad:
+                    raise ValueError(
+                        f'No hay suficientes unidades de {item.producto.codigo_interno} '
+                        f'({stock.cantidad} disponibles, {item.cantidad} requeridas).'
+                    )
+                stock.cantidad = F('cantidad') - item.cantidad
+                stock.save(update_fields=['cantidad'])
         else:
             raise RuntimeError('Movimiento sin detalle asociado.')
 
@@ -118,7 +133,6 @@ class MovimientoItem(models.Model):
     cantidad = models.PositiveIntegerField()
 
     # Campos únicamente para movimientos de salida
-    lote = models.ForeignKey(Lote, on_delete=models.PROTECT, null=True, blank=True)
     equipo_cliente = models.ForeignKey(
         EquipoCliente, on_delete=models.SET_NULL, null=True, blank=True
     )
@@ -126,32 +140,8 @@ class MovimientoItem(models.Model):
     cambio_anticipado = models.BooleanField(default=False)
     motivo_cambio = models.TextField(blank=True, null=True)
 
-    def save(self, *args, **kwargs):
-        # Si se indica lote, validar que el producto del lote coincida con el producto del item
-        if self.lote and self.lote.producto != self.producto:
-            raise ValueError('El lote especificado no corresponde al producto del item.')
-        return super().save(*args, **kwargs)
-
     def __str__(self):
         return f'{self.producto.codigo_interno} x {self.cantidad}'
-
-    # Entrada
-    def crear_lote(self):
-        codigo = f'{timezone.now().strftime("%Y%m%d%H%M%S")}-{uuid.uuid4().hex[:8]}'
-
-        lote = Lote.objects.create(
-            producto=self.producto,
-            codigo_lote=codigo,
-            cantidad_inicial=self.cantidad,
-            sucursal=self.movimiento.sucursal,
-        )
-
-        unidades = [Unidad(lote=lote) for _ in range(self.cantidad)]
-        Unidad.objects.bulk_create(unidades)
-
-        self.lote = lote
-        self.save(update_fields=['lote'])
-        return lote
 
     # Salida
     def verificar_vida_util(self):
@@ -192,21 +182,6 @@ class MovimientoItem(models.Model):
 
         self.contador_uso_snapshot = eq_cli.contador_uso
         self.save(update_fields=['contador_uso_snapshot'])
-
-    def asignar_unidades(self):
-        if not self.lote:
-            raise ValueError('Lote debe estar especificado para asignar unidades.')
-
-        disponibles = self.lote.unidades.filter(status='disponible').select_for_update().order_by('id')[:self.cantidad]
-
-        if disponibles.count() < self.cantidad:
-            raise ValueError(
-                f'No hay suficientes unidades de {self.producto.codigo_interno} en el lote {self.lote.codigo_lote}'
-            )
-
-        ids = disponibles.values_list('pk', flat=True)
-        self.lote.unidades.filter(pk__in=ids).update(status='retirada', actualizado=timezone.now())
-        return disponibles
 
     class Meta:
         ordering = ['-movimiento__creado', 'producto__codigo_interno']

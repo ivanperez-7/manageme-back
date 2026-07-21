@@ -9,13 +9,12 @@ from .models import Categoría, Marca, Proveedor, Equipo
 from .serializers import *
 from movimiento.models import Movimiento, MovimientoItem
 from organizacion.models import Cliente, EquipoCliente
-from productos.queries import lotes_queryset, productos_queryset, rendimiento_data, reorden_data
+from productos.queries import productos_queryset, rendimiento_data, reorden_data
 from utils.exports import xlsx_response
 from utils.mixins import ActivityLogMixin
 
 __all__ = [
     'ProductoViewSet',
-    'LoteViewSet',
     'CategoriaViewSet',
     'MarcaViewSet',
     'EquipoViewSet',
@@ -50,15 +49,6 @@ class ProductoViewSet(ActivityLogMixin, viewsets.ModelViewSet):
         instance = serializer.save()
         action = 'delete' if old_status == 'activo' and instance.status == 'inactivo' else 'update'
         self.log(instance, action)
-
-
-class LoteViewSet(ActivityLogMixin, viewsets.ModelViewSet):
-    serializer_class = LoteSerializer
-    filter_backends = [filters.DjangoFilterBackend]
-    filterset_fields = ['producto', 'codigo_lote']
-
-    def get_queryset(self):
-        return lotes_queryset(sucursal_id=self.request.branch_id)
 
 
 class CategoriaViewSet(ActivityLogMixin, viewsets.ModelViewSet):
@@ -140,7 +130,6 @@ def dashboard_view(request):
         {
             'stats': {
                 'productos': productos.count(),
-                'lotes': lotes_queryset(sucursal_id=branch_id).filter(cantidad_restante__gt=0).count(),
                 'categorias': categorias.count(),
                 'proveedores': Proveedor.objects.filter(activo=True).count(),
                 'clientes': Cliente.objects.filter(activo=True, sucursal=branch_id).count(),

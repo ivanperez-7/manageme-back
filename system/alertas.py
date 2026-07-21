@@ -50,40 +50,6 @@ def generar_low_stock(sucursal_id):
     return creadas, resueltas
 
 
-def generar_old_product(sucursal_id):
-    dias = ConfiguracionSistema.get_int('alerta_old_product_dias', 365)
-    hace_limite = timezone.now() - timedelta(days=dias)
-
-    ids_antiguos = set(
-        Producto.objects.filter(
-            status='activo',
-            lotes__fecha_entrada__lt=hace_limite,
-            lotes__sucursal=sucursal_id,
-            lotes__unidades__status='disponible',
-        ).values_list('pk', flat=True).distinct()
-    )
-
-    alertas_existentes = AlertaInventario.objects.filter(
-        tipo_alerta='old_product', resuelto=False, sucursal_id=sucursal_id
-    )
-
-    creadas = 0
-    for p in Producto.objects.filter(pk__in=ids_antiguos).only('pk', 'descripcion'):
-        if not alertas_existentes.filter(producto=p).exists():
-            AlertaInventario.objects.create(
-                producto=p, tipo_alerta='old_product', sucursal_id=sucursal_id,
-                mensaje=(
-                    f"{p.descripcion} tiene lotes con más de {dias} días de antigüedad "
-                    f"con existencias disponibles."
-                )
-            )
-            creadas += 1
-
-    resueltas = alertas_existentes.exclude(producto__in=ids_antiguos).update(resuelto=True)
-
-    return creadas, resueltas
-
-
 def generar_unusual_movement(sucursal_id):
     now = timezone.now()
     hace_30_dias = now - timedelta(days=30)

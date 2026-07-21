@@ -10,7 +10,7 @@ from rest_framework.test import APITestCase, APIRequestFactory
 from rest_framework import status
 
 from organizacion.models import Cliente, EquipoCliente, PerfilUsuario, Sucursal
-from productos.models import Categoría, Equipo, Lote, Marca, Producto, Proveedor, Unidad
+from productos.models import Categoría, Equipo, Marca, Producto, ProductoStock, Proveedor
 from .models import DetalleEntrada, DetalleSalida, Movimiento, MovimientoItem
 from .serializers import MovimientoSerializer
 
@@ -82,8 +82,7 @@ class MovimientoModelTest(TestCase):
             self.movimiento.approve(self.admin)
 
     @patch('movimiento.models.validar_factura_entrada')
-    @patch('movimiento.models.MovimientoItem.crear_lote')
-    def test_approve_entrada_calls_crear_lote(self, mock_crear_lote, mock_val):
+    def test_approve_entrada_creates_stock(self, mock_val):
         mock_val.return_value = True
         DetalleEntrada.objects.create(
             movimiento=self.movimiento,
@@ -94,15 +93,12 @@ class MovimientoModelTest(TestCase):
             movimiento=self.movimiento, producto=self.producto, cantidad=5
         )
         self.movimiento.approve(self.admin)
-        mock_crear_lote.assert_called_once()
+        stock = ProductoStock.objects.get(producto=self.producto, sucursal_id=1)
+        self.assertEqual(stock.cantidad, 5)
 
-    def test_approve_salida_calls_asignar_unidades(self):
+    def test_approve_salida_deducts_stock(self):
         producto = _create_producto(codigo='P002')
-        lote = Lote.objects.create(
-            producto=producto, codigo_lote='L-APR', cantidad_inicial=10, sucursal_id=1
-        )
-        for _ in range(10):
-            Unidad.objects.create(lote=lote)
+        ProductoStock.objects.create(producto=producto, cantidad=10, sucursal_id=1)
 
         sucursal = Sucursal.objects.create(nombre='Suc Test')
         cliente = Cliente.objects.create(nombre='TestCliente', sucursal=sucursal)
@@ -116,27 +112,21 @@ class MovimientoModelTest(TestCase):
             movimiento=movimiento,
             producto=producto,
             cantidad=3,
-            lote=lote,
             equipo_cliente=equipo_cliente,
         )
 
         movimiento.approve(self.admin)
 
         self.assertTrue(movimiento.aprobado)
-        self.assertEqual(
-            Unidad.objects.filter(lote=lote, status='retirada').count(), 3
-        )
+        stock = ProductoStock.objects.get(producto=producto, sucursal_id=1)
+        self.assertEqual(stock.cantidad, 7)
         # Venta no chequea contadores → no se guarda snapshot.
         item.refresh_from_db()
         self.assertIsNone(item.contador_uso_snapshot)
 
     def test_approve_salida_renta_sets_snapshot(self):
         producto = _create_producto(codigo='P002R')
-        lote = Lote.objects.create(
-            producto=producto, codigo_lote='L-RENTA', cantidad_inicial=10, sucursal_id=1
-        )
-        for _ in range(10):
-            Unidad.objects.create(lote=lote)
+        ProductoStock.objects.create(producto=producto, cantidad=10, sucursal_id=1)
 
         sucursal = Sucursal.objects.create(nombre='Suc Renta')
         cliente = Cliente.objects.create(nombre='ClienteRenta', sucursal=sucursal)
@@ -150,7 +140,6 @@ class MovimientoModelTest(TestCase):
             movimiento=movimiento,
             producto=producto,
             cantidad=1,
-            lote=lote,
             equipo_cliente=equipo_cliente,
         )
 
@@ -162,11 +151,7 @@ class MovimientoModelTest(TestCase):
 
     def test_approve_salida_venta_skips_vida_util_check(self):
         producto = _create_producto(codigo='P002V', vida_util_unidades=999)
-        lote = Lote.objects.create(
-            producto=producto, codigo_lote='L-VENTA', cantidad_inicial=10, sucursal_id=1
-        )
-        for _ in range(10):
-            Unidad.objects.create(lote=lote)
+        ProductoStock.objects.create(producto=producto, cantidad=10, sucursal_id=1)
 
         sucursal = Sucursal.objects.create(nombre='Suc Venta')
         cliente = Cliente.objects.create(nombre='ClienteVenta', sucursal=sucursal)
@@ -184,26 +169,22 @@ class MovimientoModelTest(TestCase):
         DetalleSalida.objects.create(movimiento=prev_mov, cliente=cliente, subtipo='renta')
         MovimientoItem.objects.create(
             movimiento=prev_mov, producto=producto, cantidad=1,
-            lote=lote, equipo_cliente=equipo_cliente, contador_uso_snapshot=50,
+            equipo_cliente=equipo_cliente, contador_uso_snapshot=50,
         )
 
         movimiento = Movimiento.objects.create(tipo='salida', creado_por=self.admin, sucursal_id=1)
         DetalleSalida.objects.create(movimiento=movimiento, cliente=cliente, subtipo='venta')
         MovimientoItem.objects.create(
             movimiento=movimiento, producto=producto, cantidad=1,
-            lote=lote, equipo_cliente=equipo_cliente,
+            equipo_cliente=equipo_cliente,
         )
 
         movimiento.approve(self.admin)
         self.assertTrue(movimiento.aprobado)
 
-    def test_approve_salida_rejects_insufficient_units(self):
+    def test_approve_salida_rejects_insufficient_stock(self):
         producto = _create_producto(codigo='P003')
-        lote = Lote.objects.create(
-            producto=producto, codigo_lote='L-SHORT', cantidad_inicial=2, sucursal_id=1
-        )
-        for _ in range(2):
-            Unidad.objects.create(lote=lote)
+        ProductoStock.objects.create(producto=producto, cantidad=2, sucursal_id=1)
 
         sucursal = Sucursal.objects.create(nombre='Suc Test2')
         cliente = Cliente.objects.create(nombre='Cliente2', sucursal=sucursal)
@@ -217,7 +198,6 @@ class MovimientoModelTest(TestCase):
             movimiento=movimiento,
             producto=producto,
             cantidad=5,
-            lote=lote,
             equipo_cliente=equipo_cliente,
         )
 
@@ -237,75 +217,12 @@ class MovimientoItemModelTest(TestCase):
         )
         self.assertIn('P001', str(item))
 
-    def test_crear_lote_creates_unidades(self):
-        item = MovimientoItem.objects.create(
-            movimiento=self.movimiento, producto=self.producto, cantidad=7
-        )
-        lote = item.crear_lote()
-        self.assertEqual(lote.cantidad_inicial, 7)
-        self.assertEqual(Unidad.objects.filter(lote=lote).count(), 7)
 
-    def test_save_validates_lote_producto_match(self):
-        otro_producto = _create_producto(codigo='P-OTHER')
-        lote = Lote.objects.create(
-            producto=self.producto, codigo_lote='L-MATCH', cantidad_inicial=5, sucursal_id=1
-        )
-        item = MovimientoItem(
-            movimiento=self.movimiento, producto=otro_producto, cantidad=1, lote=lote
-        )
-        with self.assertRaises(ValueError):
-            item.save()
 
-    def test_asignar_unidades_marks_as_retirada(self):
-        lote = Lote.objects.create(
-            producto=self.producto, codigo_lote='L-ASIGN', cantidad_inicial=10, sucursal_id=1
-        )
-        for _ in range(10):
-            Unidad.objects.create(lote=lote)
-
-        movimiento = Movimiento.objects.create(tipo='salida', creado_por=self.admin, sucursal_id=1)
-        item = MovimientoItem.objects.create(
-            movimiento=movimiento, producto=self.producto, cantidad=4, lote=lote
-        )
-
-        asignadas = item.asignar_unidades()
-        self.assertEqual(len(asignadas), 4)
-        self.assertEqual(
-            Unidad.objects.filter(lote=lote, status='retirada').count(), 4
-        )
-
-    def test_asignar_unidades_raises_if_not_enough(self):
-        lote = Lote.objects.create(
-            producto=self.producto, codigo_lote='L-LOW', cantidad_inicial=1, sucursal_id=1
-        )
-        Unidad.objects.create(lote=lote)
-
-        movimiento = Movimiento.objects.create(tipo='salida', creado_por=self.admin, sucursal_id=1)
-        item = MovimientoItem.objects.create(
-            movimiento=movimiento, producto=self.producto, cantidad=10, lote=lote
-        )
-
-        with self.assertRaises(ValueError):
-            item.asignar_unidades()
-
-    def test_asignar_unidades_raises_if_no_lote(self):
+    def test_verificar_vida_util_raises_if_no_equipo_cliente(self):
         movimiento = Movimiento.objects.create(tipo='salida', creado_por=self.admin, sucursal_id=1)
         item = MovimientoItem.objects.create(
             movimiento=movimiento, producto=self.producto, cantidad=1
-        )
-        with self.assertRaises(ValueError):
-            item.asignar_unidades()
-
-    def test_verificar_vida_util_raises_if_no_equipo_cliente(self):
-        lote = Lote.objects.create(
-            producto=self.producto, codigo_lote='L-VU', cantidad_inicial=5, sucursal_id=1
-        )
-        for _ in range(5):
-            Unidad.objects.create(lote=lote)
-
-        movimiento = Movimiento.objects.create(tipo='salida', creado_por=self.admin, sucursal_id=1)
-        item = MovimientoItem.objects.create(
-            movimiento=movimiento, producto=self.producto, cantidad=1, lote=lote
         )
         with self.assertRaises(ValueError):
             item.verificar_vida_util()
@@ -317,11 +234,6 @@ class MovimientoItemModelTest(TestCase):
         eq_cli = EquipoCliente.objects.create(
             equipo=equipo, cliente=cliente, alias='EQ-VU', contador_uso=100
         )
-        lote = Lote.objects.create(
-            producto=self.producto, codigo_lote='L-VU2', cantidad_inicial=5, sucursal_id=1
-        )
-        for _ in range(5):
-            Unidad.objects.create(lote=lote)
 
         # Simulate a previous delivery with snapshot at 50
         prev_mov = Movimiento.objects.create(
@@ -330,11 +242,10 @@ class MovimientoItemModelTest(TestCase):
             aprobado=True, sucursal_id=1,
         )
         DetalleSalida.objects.create(movimiento=prev_mov, cliente=cliente)
-        prev_item = MovimientoItem.objects.create(
+        MovimientoItem.objects.create(
             movimiento=prev_mov,
             producto=self.producto,
             cantidad=1,
-            lote=lote,
             equipo_cliente=eq_cli,
             contador_uso_snapshot=50,
         )
@@ -345,7 +256,6 @@ class MovimientoItemModelTest(TestCase):
             movimiento=movimiento,
             producto=self.producto,
             cantidad=1,
-            lote=lote,
             equipo_cliente=eq_cli,
         )
 
@@ -361,11 +271,6 @@ class MovimientoItemModelTest(TestCase):
         eq_cli = EquipoCliente.objects.create(
             equipo=equipo, cliente=cliente, alias='EQ-VU2', contador_uso=52
         )
-        lote = Lote.objects.create(
-            producto=self.producto, codigo_lote='L-VU3', cantidad_inicial=5, sucursal_id=1
-        )
-        for _ in range(5):
-            Unidad.objects.create(lote=lote)
 
         # contador_uso=52, last snapshot at 50 → usage=2, vida_util=3 → not enough
         prev_mov = Movimiento.objects.create(
@@ -374,11 +279,10 @@ class MovimientoItemModelTest(TestCase):
             aprobado=True, sucursal_id=1,
         )
         DetalleSalida.objects.create(movimiento=prev_mov, cliente=cliente)
-        prev_item = MovimientoItem.objects.create(
+        MovimientoItem.objects.create(
             movimiento=prev_mov,
             producto=self.producto,
             cantidad=1,
-            lote=lote,
             equipo_cliente=eq_cli,
             contador_uso_snapshot=50,
         )
@@ -389,7 +293,6 @@ class MovimientoItemModelTest(TestCase):
             movimiento=movimiento,
             producto=self.producto,
             cantidad=1,
-            lote=lote,
             equipo_cliente=eq_cli,
         )
 
@@ -408,9 +311,6 @@ class MovimientoItemModelTest(TestCase):
         )
         equipo = Equipo.objects.create(nombre=f'EQ-D{dias_prev}', marca=Marca.objects.create(nombre=f'MD{dias_prev}'))
         eq_cli = EquipoCliente.objects.create(equipo=equipo, cliente=cliente, alias='A', contador_uso=50)
-        lote = Lote.objects.create(producto=producto, codigo_lote=f'LD{dias_prev}', cantidad_inicial=5, sucursal_id=1)
-        for _ in range(5):
-            Unidad.objects.create(lote=lote)
 
         prev_mov = Movimiento.objects.create(
             tipo='salida', creado_por=self.admin, aprobado=True, sucursal_id=1,
@@ -419,12 +319,12 @@ class MovimientoItemModelTest(TestCase):
         DetalleSalida.objects.create(movimiento=prev_mov, cliente=cliente, subtipo='renta')
         MovimientoItem.objects.create(
             movimiento=prev_mov, producto=producto, cantidad=1,
-            lote=lote, equipo_cliente=eq_cli, contador_uso_snapshot=50,
+            equipo_cliente=eq_cli, contador_uso_snapshot=50,
         )
         mov = Movimiento.objects.create(tipo='salida', creado_por=self.admin, sucursal_id=1)
         DetalleSalida.objects.create(movimiento=mov, cliente=cliente, subtipo='renta')
         return MovimientoItem.objects.create(
-            movimiento=mov, producto=producto, cantidad=1, lote=lote, equipo_cliente=eq_cli,
+            movimiento=mov, producto=producto, cantidad=1, equipo_cliente=eq_cli,
         )
 
     def test_vida_util_passes_by_dias_when_units_insufficient(self):
@@ -503,11 +403,8 @@ class MovimientoSerializerTest(APITestCase):
         self.assertFalse(serializer.is_valid())
         self.assertIn('El detalle de salida es requerido', str(serializer.errors))
 
-    def test_validate_salida_checks_unidad_availability(self):
-        lote = Lote.objects.create(
-            producto=self.producto, codigo_lote='L-SER', cantidad_inicial=1, sucursal_id=1
-        )
-        Unidad.objects.create(lote=lote)
+    def test_validate_salida_checks_stock_availability(self):
+        ProductoStock.objects.create(producto=self.producto, cantidad=1, sucursal_id=1)
 
         sucursal = Sucursal.objects.create(nombre='Suc Ser')
         cliente = Cliente.objects.create(nombre='CSer', sucursal=sucursal)
@@ -518,7 +415,6 @@ class MovimientoSerializerTest(APITestCase):
                 {
                     'producto_id': self.producto.pk,
                     'cantidad': 99,
-                    'lote_id': lote.pk,
                 }
             ],
             'detalle_salida': {'cliente_id': cliente.pk, 'tecnico': 'Tec'},
@@ -527,17 +423,13 @@ class MovimientoSerializerTest(APITestCase):
         self.assertFalse(serializer.is_valid())
 
     def test_validate_salida_renta_requires_equipo_cliente(self):
-        lote = Lote.objects.create(
-            producto=self.producto, codigo_lote='L-RENTAV', cantidad_inicial=5, sucursal_id=1
-        )
-        for _ in range(5):
-            Unidad.objects.create(lote=lote)
+        ProductoStock.objects.create(producto=self.producto, cantidad=5, sucursal_id=1)
         sucursal = Sucursal.objects.create(nombre='Suc RentaV')
         cliente = Cliente.objects.create(nombre='CRentaV', sucursal=sucursal)
 
         data = {
             'tipo': 'salida',
-            'items': [{'producto_id': self.producto.pk, 'cantidad': 1, 'lote_id': lote.pk}],
+            'items': [{'producto_id': self.producto.pk, 'cantidad': 1}],
             'detalle_salida': {'cliente_id': cliente.pk, 'subtipo': 'renta'},
         }
         serializer = MovimientoSerializer(data=data, context={'request': self.request})
@@ -545,18 +437,14 @@ class MovimientoSerializerTest(APITestCase):
         self.assertIn('equipo_cliente', str(serializer.errors))
 
     def test_validate_salida_venta_rejects_cambio_anticipado(self):
-        lote = Lote.objects.create(
-            producto=self.producto, codigo_lote='L-VENTAV', cantidad_inicial=5, sucursal_id=1
-        )
-        for _ in range(5):
-            Unidad.objects.create(lote=lote)
+        ProductoStock.objects.create(producto=self.producto, cantidad=5, sucursal_id=1)
         sucursal = Sucursal.objects.create(nombre='Suc VentaV')
         cliente = Cliente.objects.create(nombre='CVentaV', sucursal=sucursal)
 
         data = {
             'tipo': 'salida',
             'items': [{
-                'producto_id': self.producto.pk, 'cantidad': 1, 'lote_id': lote.pk,
+                'producto_id': self.producto.pk, 'cantidad': 1,
                 'cambio_anticipado': True, 'motivo_cambio': 'x',
             }],
             'detalle_salida': {'cliente_id': cliente.pk, 'subtipo': 'venta'},
@@ -566,29 +454,19 @@ class MovimientoSerializerTest(APITestCase):
         self.assertIn('cambio_anticipado', str(serializer.errors))
 
     def test_validate_salida_venta_succeeds_without_equipo_cliente(self):
-        lote = Lote.objects.create(
-            producto=self.producto, codigo_lote='L-VENTAOK', cantidad_inicial=5, sucursal_id=1
-        )
-        for _ in range(5):
-            Unidad.objects.create(lote=lote)
+        ProductoStock.objects.create(producto=self.producto, cantidad=5, sucursal_id=1)
         sucursal = Sucursal.objects.create(nombre='Suc VentaOK')
         cliente = Cliente.objects.create(nombre='CVentaOK', sucursal=sucursal)
 
         data = {
             'tipo': 'salida',
-            'items': [{'producto_id': self.producto.pk, 'cantidad': 1, 'lote_id': lote.pk}],
+            'items': [{'producto_id': self.producto.pk, 'cantidad': 1}],
             'detalle_salida': {'cliente_id': cliente.pk, 'subtipo': 'venta'},
         }
         serializer = MovimientoSerializer(data=data, context={'request': self.request})
         self.assertTrue(serializer.is_valid(), serializer.errors)
 
     def test_validate_entrada_success(self):
-        lote = Lote.objects.create(
-            producto=self.producto, codigo_lote='L-SER2', cantidad_inicial=10, sucursal_id=1
-        )
-        for _ in range(10):
-            Unidad.objects.create(lote=lote)
-
         data = {
             'tipo': 'entrada',
             'items': [{'producto_id': self.producto.pk, 'cantidad': 5}],
@@ -620,12 +498,6 @@ class MovimientoViewSetTest(APITestCase):
         return self.client.get(url, HTTP_X_BRANCH_ID=self.sucursal.id)
 
     def test_create_entrada(self):
-        lote = Lote.objects.create(
-            producto=self.producto, codigo_lote='L-VIEW', cantidad_inicial=10, sucursal=self.sucursal
-        )
-        for _ in range(10):
-            Unidad.objects.create(lote=lote)
-
         url = reverse('movimientos-list')
         data = {
             'tipo': 'entrada',
@@ -639,11 +511,7 @@ class MovimientoViewSetTest(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
 
     def test_create_salida(self):
-        lote = Lote.objects.create(
-            producto=self.producto, codigo_lote='L-VIEW2', cantidad_inicial=10, sucursal=self.sucursal
-        )
-        for _ in range(10):
-            Unidad.objects.create(lote=lote)
+        ProductoStock.objects.create(producto=self.producto, cantidad=10, sucursal=self.sucursal)
 
         cliente = Cliente.objects.create(nombre='CView', sucursal=self.sucursal)
 
@@ -654,7 +522,6 @@ class MovimientoViewSetTest(APITestCase):
                 {
                     'producto_id': self.producto.pk,
                     'cantidad': 3,
-                    'lote_id': lote.pk,
                 }
             ],
             'detalle_salida': {'cliente_id': cliente.pk, 'tecnico': 'Tec', 'subtipo': 'venta'},

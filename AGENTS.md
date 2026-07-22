@@ -28,6 +28,51 @@ Approval requires `admin` role. Unapproved movements are excluded from dashboard
 Run: `python manage.py test`
 No pytest. Only `productos/tests.py` exists (6 model tests + serializer/viewset tests). Tests use `APITestCase` + `force_login` (SessionAuth, not JWT).
 
+## Frontend (printpos-web)
+- **Location:** `../printpos-web` (sibling repo)
+- **Stack:** React 19, Vite 7, TanStack Router (file-based), TanStack Form + Zod v4, shadcn/ui new-york zinc, Tailwind 4, Recharts
+- **Dev server:** `npm run dev` (port 3000)
+- **Env:** `VITE_API_URL=http://localhost:8000/api/v1`
+- **Test:** `npm test` (vitest), `npm run build` (includes `tsc` type-check)
+
+### Auth & API client
+- Token stored in-memory (`authStore`), refresh via `POST /token/refresh/` (cookie-based)
+- `x-branch-id` header from `branch` cookie in every `withAuth` axios request
+- Auth guard in `_app.tsx` `beforeLoad` — checks JWT expiry, refreshes or redirects to `/login`
+- Role guard: `authRoleGuard(allowedRoles)` — admin/operativo/consulta
+
+### Route ↔ API mapping
+| Page | Backend endpoint |
+|---|---|
+| `/catalogo` | `GET /productos/productos/`, `/categorias/`, `/marcas/`, `/equipos/`, `/proveedores/` |
+| `/dashboard` | `GET /productos/dashboard/`, `/rendimiento/` |
+| `/movements` | `GET /movimientos/movimientos/` |
+| `/movements/:id` | `GET /movimientos/movimientos/{id}/` |
+| `/movements/new` | `POST /movimientos/movimientos/` |
+| `/clients`, `/suppliers` | `GET /organizacion/clientes/`, `/proveedores/` |
+| `/equipos` | `GET /productos/equipos/`, `/categorias/`, `/marcas/` |
+| `/reorden` | `GET /productos/reorden/` |
+| `/actividades` | `GET /system/actividades/` |
+| `/settings` | `GET /system/configuracion/` |
+| `/alertas` | `GET /system/alertas/`, `/refrescar/` |
+| `/chatbot` | `POST /api/v1/chat/` |
+
+### Key files in printpos-web
+| File | Purpose |
+|---|---|
+| `src/main.tsx` | App entry: QueryClient, Router, ThemeProvider |
+| `src/lib/auth.ts` | Axios instance with auth interceptors, login/logout, `authGuard` |
+| `src/lib/types.ts` | Zod schemas + TypeScript types matching backend models |
+| `src/lib/utils.ts` | `cn()` (clsx + tailwind-merge) |
+| `src/api/endpoints.ts` | All API endpoint constants |
+| `src/api/` | Per-domain modules (dashboard, catalogo, movimientos, etc.) |
+| `src/hooks/use-app-form.tsx` | `<Field.InputField>`, `<Field.NumberSelectField>`, `<form.SaveButton>` |
+| `src/routes/_app.tsx` | Protected layout with sidebar + auth guard |
+| `src/components/ui/` | shadcn/ui components |
+| `src/components/movement/` | Scan input for movement detail |
+| `src/stores/authStore.ts` | In-memory access token |
+| `src/stores/userStore.ts` | User profile (rol, name, etc.) |
+
 ## Known gotchas
 - **Factura validation** (`validar_factura_entrada`) connects via Gmail API OAuth2. Requires `credentials.json` + `token.json` in `printpos_api/`
 - **Chat** (`POST /api/v1/chat/`) requires `GEMINI_API_KEY`. LangChain agent restricted to 14 tables in `TABLAS_PERMITIDAS`

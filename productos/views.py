@@ -1,3 +1,5 @@
+import re
+
 from django.db.models import Count, Sum, Q, F
 from django.utils import timezone
 from django_filters import rest_framework as filters
@@ -80,6 +82,36 @@ class EquipoViewSet(ActivityLogMixin, viewsets.ModelViewSet):
 
         serializer = EquipoClienteSerializer(qs, many=True)
         return Response(serializer.data)
+
+    @action(detail=False, methods=['get'])
+    def similares(self, request):
+        marca_id = request.query_params.get('marca_id')
+        nombre = request.query_params.get('nombre', '').strip()
+        exclude_id = request.query_params.get('exclude_id')
+
+        if not marca_id or not nombre:
+            return Response([])
+
+        numeros_input = set(re.findall(r'\d+', nombre))
+
+        if not numeros_input:
+            return Response([])
+
+        equipos = Equipo.objects.filter(marca_id=marca_id, activo=True)
+
+        # Al editar, excluir el equipo actual para que no se detecte a sí mismo como duplicado
+        if exclude_id:
+            equipos = equipos.exclude(id=exclude_id)
+
+        similares = []
+        for e in equipos:
+            numeros_eq = set(re.findall(r'\d+', e.nombre))
+            compartidos = numeros_input & numeros_eq
+            if compartidos:
+                similares.append({'id': e.id, 'nombre': e.nombre})
+
+        similares.sort(key=lambda x: x['nombre'])
+        return Response(similares)
 
     @action(detail=True, methods=['get'])
     def stats(self, request, pk=None):

@@ -149,7 +149,97 @@ class ProductoViewSetTest(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data[0]['codigo_interno'], "P007")
 
+    def test_create_with_initial_stock(self):
+        user = User.objects.create_user(username='stockuser', password='pass')
+        PerfilUsuario.objects.create(usuario=user, rol='admin')
+        user.profile.sucursales.add(self.sucursal)
+        self.client.force_login(user)
 
+        url = reverse('producto-list')
+        data = {
+            'codigo_interno': 'P-STOCK',
+            'descripcion': 'Con stock inicial',
+            'categoria_id': self.categoria.id,
+            'equipos_id': [],
+            'sku': 'SKU-STOCK',
+            'min_stock': 5,
+            'vida_util_unidades': 100,
+            'proveedor_id': self.proveedor.id,
+            'unidades_iniciales': 50,
+        }
+        response = self.client.post(url, data, format='json', HTTP_X_BRANCH_ID=self.sucursal.id)
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        stock = ProductoStock.objects.get(
+            producto__codigo_interno='P-STOCK',
+            sucursal=self.sucursal,
+        )
+        self.assertEqual(stock.cantidad, 50)
+
+    def test_create_without_initial_stock(self):
+        user = User.objects.create_user(username='nostockuser', password='pass')
+        PerfilUsuario.objects.create(usuario=user, rol='admin')
+        user.profile.sucursales.add(self.sucursal)
+        self.client.force_login(user)
+
+        url = reverse('producto-list')
+        data = {
+            'codigo_interno': 'P-NOSTOCK',
+            'descripcion': 'Sin stock inicial',
+            'categoria_id': self.categoria.id,
+            'equipos_id': [],
+            'sku': 'SKU-NOSTOCK',
+            'min_stock': 5,
+            'vida_util_unidades': 100,
+            'proveedor_id': self.proveedor.id,
+        }
+        response = self.client.post(url, data, format='json', HTTP_X_BRANCH_ID=self.sucursal.id)
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        exists = ProductoStock.objects.filter(
+            producto__codigo_interno='P-NOSTOCK',
+            sucursal=self.sucursal,
+        ).exists()
+        self.assertFalse(exists)
+
+    def test_create_rejects_negative_initial_stock(self):
+        user = User.objects.create_user(username='neguser', password='pass')
+        PerfilUsuario.objects.create(usuario=user, rol='admin')
+        user.profile.sucursales.add(self.sucursal)
+        self.client.force_login(user)
+
+        url = reverse('producto-list')
+        data = {
+            'codigo_interno': 'P-NEG',
+            'descripcion': 'Stock negativo',
+            'categoria_id': self.categoria.id,
+            'equipos_id': [],
+            'sku': 'SKU-NEG',
+            'min_stock': 5,
+            'vida_util_unidades': 100,
+            'proveedor_id': self.proveedor.id,
+            'unidades_iniciales': 0,
+        }
+        response = self.client.post(url, data, format='json', HTTP_X_BRANCH_ID=self.sucursal.id)
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_patch_ignores_unidades_iniciales(self):
+        user = User.objects.create_user(username='patchuser', password='pass')
+        PerfilUsuario.objects.create(usuario=user, rol='admin')
+        user.profile.sucursales.add(self.sucursal)
+        self.client.force_login(user)
+
+        url = reverse('producto-detail', args=[self.producto.id])
+        data = {
+            'descripcion': 'Editada',
+            'unidades_iniciales': 999,
+        }
+        response = self.client.patch(url, data, format='json', HTTP_X_BRANCH_ID=self.sucursal.id)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        stock_exists = ProductoStock.objects.filter(
+            producto=self.producto,
+            sucursal=self.sucursal,
+            cantidad=999,
+        ).exists()
+        self.assertFalse(stock_exists)
 
 
 

@@ -71,6 +71,9 @@ class ProductoSerializer(serializers.ModelSerializer):
         source='proveedor',
         allow_null=True
     )
+    unidades_iniciales = serializers.IntegerField(
+        write_only=True, required=False, allow_null=True, min_value=1
+    )
 
     class Meta:
         model = Producto
@@ -86,6 +89,10 @@ class ProductoSerializer(serializers.ModelSerializer):
                 'Defina al menos vida_util_unidades o vida_util_dias.'
             )
         return data
+
+    def create(self, validated_data):
+        validated_data.pop('unidades_iniciales', None)
+        return super().create(validated_data)
 
     def get_cantidad_disponible(self, instance: Producto):
         if hasattr(instance, 'cantidad_disponible'):

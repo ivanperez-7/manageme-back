@@ -13,7 +13,7 @@ class Cliente(models.Model):
     nombre = models.CharField(max_length=200)
     tipo = models.CharField(max_length=10, choices=TIPO_PERSONA, default='fisica')
 
-    rfc = models.CharField(max_length=13, blank=True, null=True, unique=True)
+    rfc = models.CharField(max_length=13, blank=True, null=True)
     telefono = models.CharField(max_length=20, blank=True, null=True)
     email = models.EmailField(blank=True, null=True)
 

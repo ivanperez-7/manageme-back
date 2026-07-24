@@ -27,7 +27,6 @@ class Cliente(models.Model):
 
     class Meta:
         ordering = ['nombre']
-        unique_together = ('rfc', 'activo')
 
     def __str__(self):
         return self.nombre

@@ -5,10 +5,24 @@ from .models import Cliente, PerfilUsuario, Sucursal
 
 
 class ClienteSerializer(serializers.ModelSerializer):
+    activo = serializers.BooleanField(required=False, default=True)
+
     class Meta:
         model = Cliente
         fields = '__all__'
         read_only_fields = ['sucursal']
+
+    def validate(self, attrs):
+        rfc = attrs.get('rfc')
+        if rfc:
+            qs = Cliente.objects.filter(rfc=rfc, activo=True)
+            if self.instance:
+                qs = qs.exclude(pk=self.instance.pk)
+            if qs.exists():
+                raise serializers.ValidationError(
+                    {'rfc': 'Ya existe un cliente activo con ese RFC.'}
+                )
+        return attrs
 
 
 class SucursalSerializer(serializers.ModelSerializer):

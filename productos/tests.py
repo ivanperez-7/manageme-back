@@ -521,15 +521,10 @@ class CambioAnticipadoTest(APITestCase):
             data, format='json', **self.headers,
         )
 
-    def test_salida_sin_flag_rechaza_aprobacion(self):
+    def test_salida_sin_flag_rechaza_creacion(self):
         response = self._create_salida(self.operativo)
-        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        mov_id = response.data['id']
-
-        self.client.force_login(self.admin)
-        url = reverse('movimientos-aprobar', args=[mov_id])
-        response = self.client.post(url, **self.headers)
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('no alcanza su vida útil', str(response.data))
 
     def test_salida_con_flag_aprueba(self):
         response = self._create_salida(self.operativo, {

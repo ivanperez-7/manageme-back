@@ -1,9 +1,11 @@
 from django.contrib.auth.models import User
+from django.utils import timezone
 from drf_writable_nested.serializers import WritableNestedModelSerializer
 from rest_framework import serializers
 from shapeless_serializers.serializers import InlineShapelessModelSerializer
 
 from .models import Movimiento, MovimientoItem, DetalleEntrada, DetalleSalida
+from .utils import compute_vida_util_usage
 from organizacion.models import Cliente, EquipoCliente
 from organizacion.serializers import UserSerializer
 from productos.models import Producto, ProductoStock
@@ -146,6 +148,19 @@ class MovimientoSerializer(WritableNestedModelSerializer):
                     raise serializers.ValidationError(
                         'cambio_anticipado solo aplica a salidas de renta.'
                     )
+
+                if es_renta and item.get('equipo_cliente'):
+                    usage = compute_vida_util_usage(
+                        producto=item['producto'],
+                        equipo_cliente=item['equipo_cliente'],
+                        movimiento_creado=timezone.now(),
+                    )
+                    if not usage['alcanzada'] and not item.get('cambio_anticipado'):
+                        raise serializers.ValidationError(
+                            f'{item["producto"].codigo_interno} aún no alcanza su vida útil '
+                            f'({usage["mensaje"]}). Marque "Cambio anticipado" e indique el '
+                            f'motivo para forzar la salida.'
+                        )
 
         data['creado_por'] = self.context['request'].user
         data['sucursal_id'] = self.context['request'].branch_id

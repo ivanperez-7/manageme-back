@@ -484,6 +484,137 @@ class MovimientoSerializerTest(APITestCase):
         serializer = MovimientoSerializer(data=data, context={'request': self.request})
         self.assertTrue(serializer.is_valid(), serializer.errors)
 
+    # ── Vida útil validation at creation ─────────────────────────────
+
+    def _setup_vida_util_scenario(self, contador_uso, vida_util_unidades=5, vida_util_dias=None, snapshot_valor=10, dias_prev=30):
+        """Creates a product + equipo_cliente + a prior delivery snapshot, returns (producto, equipo_cliente)."""
+        producto = _create_producto(
+            codigo=f'VU-{contador_uso}-{vida_util_unidades}',
+            vida_util_unidades=vida_util_unidades,
+            vida_util_dias=vida_util_dias,
+        )
+        ProductoStock.objects.create(producto=producto, cantidad=10, sucursal_id=1)
+
+        sucursal = Sucursal.objects.create(nombre=f'Suc VU {contador_uso}')
+        cliente = Cliente.objects.create(nombre=f'Cli VU {contador_uso}', sucursal=sucursal)
+        equipo = Equipo.objects.create(nombre=f'EQ-VU-{contador_uso}', marca=Marca.objects.create(nombre=f'M-{contador_uso}'))
+        eq_cli = EquipoCliente.objects.create(
+            equipo=equipo, cliente=cliente, alias='EQ', contador_uso=contador_uso,
+        )
+
+        prior = Movimiento.objects.create(
+            tipo='salida', creado_por=self.admin, aprobado=True, sucursal_id=1,
+            creado=timezone.now() - timezone.timedelta(days=dias_prev),
+        )
+        DetalleSalida.objects.create(movimiento=prior, cliente=cliente, subtipo='renta')
+        MovimientoItem.objects.create(
+            movimiento=prior, producto=producto, cantidad=1,
+            equipo_cliente=eq_cli, contador_uso_snapshot=snapshot_valor,
+        )
+
+        return producto, eq_cli, cliente
+
+    def test_vida_util_renta_rejects_if_not_reached(self):
+        """contador_uso=12, snapshot=10 → uso=2 < vida_util=5 → block creation."""
+        producto, eq_cli, cliente = self._setup_vida_util_scenario(contador_uso=12, snapshot_valor=10, vida_util_unidades=5)
+
+        data = {
+            'tipo': 'salida',
+            'items': [{
+                'producto_id': producto.pk, 'cantidad': 1,
+                'equipo_cliente_id': eq_cli.pk,
+            }],
+            'detalle_salida': {'cliente_id': cliente.pk, 'subtipo': 'renta'},
+        }
+        serializer = MovimientoSerializer(data=data, context={'request': self.request})
+        self.assertFalse(serializer.is_valid())
+        self.assertIn('no alcanza su vida útil', str(serializer.errors))
+        self.assertIn('2/5 unidades', str(serializer.errors))
+
+    def test_vida_util_renta_passes_if_reached_by_units(self):
+        """contador_uso=20, snapshot=10 → uso=10 ≥ vida_util=5 → passes."""
+        producto, eq_cli, cliente = self._setup_vida_util_scenario(contador_uso=20, snapshot_valor=10, vida_util_unidades=5)
+
+        data = {
+            'tipo': 'salida',
+            'items': [{
+                'producto_id': producto.pk, 'cantidad': 1,
+                'equipo_cliente_id': eq_cli.pk,
+            }],
+            'detalle_salida': {'cliente_id': cliente.pk, 'subtipo': 'renta'},
+        }
+        serializer = MovimientoSerializer(data=data, context={'request': self.request})
+        self.assertTrue(serializer.is_valid(), serializer.errors)
+
+    def test_vida_util_renta_passes_if_reached_by_days(self):
+        """uso=0 (no counter change), but 40 days elapsed ≥ vida_util_dias=30 → passes."""
+        producto, eq_cli, cliente = self._setup_vida_util_scenario(
+            contador_uso=10, snapshot_valor=10, vida_util_unidades=100, vida_util_dias=30, dias_prev=40,
+        )
+
+        data = {
+            'tipo': 'salida',
+            'items': [{
+                'producto_id': producto.pk, 'cantidad': 1,
+                'equipo_cliente_id': eq_cli.pk,
+            }],
+            'detalle_salida': {'cliente_id': cliente.pk, 'subtipo': 'renta'},
+        }
+        serializer = MovimientoSerializer(data=data, context={'request': self.request})
+        self.assertTrue(serializer.is_valid(), serializer.errors)
+
+    def test_vida_util_renta_passes_with_cambio_anticipado(self):
+        """Not reached (uso=2 < vida_util=5), but cambio_anticipado=True → passes."""
+        producto, eq_cli, cliente = self._setup_vida_util_scenario(contador_uso=12, snapshot_valor=10, vida_util_unidades=5)
+
+        data = {
+            'tipo': 'salida',
+            'items': [{
+                'producto_id': producto.pk, 'cantidad': 1,
+                'equipo_cliente_id': eq_cli.pk,
+                'cambio_anticipado': True,
+                'motivo_cambio': 'Desgaste prematuro',
+            }],
+            'detalle_salida': {'cliente_id': cliente.pk, 'subtipo': 'renta'},
+        }
+        serializer = MovimientoSerializer(data=data, context={'request': self.request})
+        self.assertTrue(serializer.is_valid(), serializer.errors)
+
+    def test_vida_util_renta_passes_if_no_prior_snapshot(self):
+        """First delivery (no prior snapshot) → no baseline → always passes."""
+        producto = _create_producto(codigo='VU-FIRST', vida_util_unidades=5)
+        ProductoStock.objects.create(producto=producto, cantidad=10, sucursal_id=1)
+        sucursal = Sucursal.objects.create(nombre='Suc VU First')
+        cliente = Cliente.objects.create(nombre='Cli VU First', sucursal=sucursal)
+        equipo = Equipo.objects.create(nombre='EQ-VU-F', marca=Marca.objects.create(nombre='M-VU-F'))
+        eq_cli = EquipoCliente.objects.create(equipo=equipo, cliente=cliente, alias='EQ-F', contador_uso=999)
+
+        data = {
+            'tipo': 'salida',
+            'items': [{
+                'producto_id': producto.pk, 'cantidad': 1,
+                'equipo_cliente_id': eq_cli.pk,
+            }],
+            'detalle_salida': {'cliente_id': cliente.pk, 'subtipo': 'renta'},
+        }
+        serializer = MovimientoSerializer(data=data, context={'request': self.request})
+        self.assertTrue(serializer.is_valid(), serializer.errors)
+
+    def test_vida_util_skips_for_venta(self):
+        """Venta never checks vida_util, even if snapshot exists."""
+        producto, eq_cli, cliente = self._setup_vida_util_scenario(contador_uso=12, snapshot_valor=10, vida_util_unidades=5)
+
+        data = {
+            'tipo': 'salida',
+            'items': [{
+                'producto_id': producto.pk, 'cantidad': 1,
+                'equipo_cliente_id': eq_cli.pk,
+            }],
+            'detalle_salida': {'cliente_id': cliente.pk, 'subtipo': 'venta'},
+        }
+        serializer = MovimientoSerializer(data=data, context={'request': self.request})
+        self.assertTrue(serializer.is_valid(), serializer.errors)
+
 
 # ── ViewSet Tests ────────────────────────────────────────────────────
 

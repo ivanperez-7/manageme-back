@@ -6,6 +6,7 @@ from django.utils import timezone
 from organizacion.models import Cliente, EquipoCliente
 from productos.models import Producto, ProductoStock
 from utils.validators import validar_factura_entrada
+from .utils import compute_vida_util_usage
 
 
 class Movimiento(models.Model):
@@ -148,39 +149,20 @@ class MovimientoItem(models.Model):
         if not self.equipo_cliente:
             raise ValueError(f'Item {self.producto.codigo_interno} no tiene equipo_cliente asignado.')
 
-        producto = self.producto
-        eq_cli = self.equipo_cliente
+        usage = compute_vida_util_usage(
+            producto=self.producto,
+            equipo_cliente=self.equipo_cliente,
+            movimiento_creado=self.movimiento.creado,
+            exclude_item_pk=self.pk,
+        )
 
-        ultima = MovimientoItem.objects.filter(
-            producto=producto,
-            movimiento__detalle_salida__cliente=eq_cli.cliente,
-            equipo_cliente=eq_cli,
-            contador_uso_snapshot__isnull=False
-        ).exclude(pk=self.pk).select_related('movimiento').order_by('-movimiento__creado').first()
+        if not usage['alcanzada'] and not self.cambio_anticipado:
+            raise ValueError(
+                f'{self.producto.codigo_interno} aún no alcanza su vida útil entre entregas '
+                f'({usage["mensaje"]}). Use cambio anticipado para forzar.'
+            )
 
-        if ultima:
-            # Vida útil por unidades y/o por días: se renueva cuando cualquiera se
-            # alcanza (lo que ocurra primero). Bloquea solo si NINGUNO se alcanza.
-            uso_unid = eq_cli.contador_uso - ultima.contador_uso_snapshot
-            dias = (self.movimiento.creado - ultima.movimiento.creado).days
-            vu_unid = producto.vida_util_unidades
-            vu_dias = producto.vida_util_dias
-
-            agotado_unid = vu_unid is not None and uso_unid >= vu_unid
-            agotado_dias = vu_dias is not None and dias >= vu_dias
-
-            if not (agotado_unid or agotado_dias) and not self.cambio_anticipado:
-                faltas = []
-                if vu_unid is not None:
-                    faltas.append(f'{uso_unid}/{vu_unid} unidades')
-                if vu_dias is not None:
-                    faltas.append(f'{dias}/{vu_dias} días')
-                raise ValueError(
-                    f'{producto.codigo_interno} aún no alcanza su vida útil entre entregas '
-                    f'({"; ".join(faltas)}). Use cambio anticipado para forzar.'
-                )
-
-        self.contador_uso_snapshot = eq_cli.contador_uso
+        self.contador_uso_snapshot = self.equipo_cliente.contador_uso
         self.save(update_fields=['contador_uso_snapshot'])
 
     class Meta:

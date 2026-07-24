@@ -440,11 +440,16 @@ class MovimientoSerializerTest(APITestCase):
         ProductoStock.objects.create(producto=self.producto, cantidad=5, sucursal_id=1)
         sucursal = Sucursal.objects.create(nombre='Suc VentaV')
         cliente = Cliente.objects.create(nombre='CVentaV', sucursal=sucursal)
+        equipo = Equipo.objects.create(nombre='EQ-VENTA', marca=Marca.objects.create(nombre='MV'))
+        equipo_cliente = EquipoCliente.objects.create(
+            equipo=equipo, cliente=cliente, alias='EQV', contador_uso=10
+        )
 
         data = {
             'tipo': 'salida',
             'items': [{
                 'producto_id': self.producto.pk, 'cantidad': 1,
+                'equipo_cliente_id': equipo_cliente.pk,
                 'cambio_anticipado': True, 'motivo_cambio': 'x',
             }],
             'detalle_salida': {'cliente_id': cliente.pk, 'subtipo': 'venta'},
@@ -453,7 +458,7 @@ class MovimientoSerializerTest(APITestCase):
         self.assertFalse(serializer.is_valid())
         self.assertIn('cambio_anticipado', str(serializer.errors))
 
-    def test_validate_salida_venta_succeeds_without_equipo_cliente(self):
+    def test_validate_salida_venta_requires_equipo_cliente(self):
         ProductoStock.objects.create(producto=self.producto, cantidad=5, sucursal_id=1)
         sucursal = Sucursal.objects.create(nombre='Suc VentaOK')
         cliente = Cliente.objects.create(nombre='CVentaOK', sucursal=sucursal)
@@ -464,7 +469,8 @@ class MovimientoSerializerTest(APITestCase):
             'detalle_salida': {'cliente_id': cliente.pk, 'subtipo': 'venta'},
         }
         serializer = MovimientoSerializer(data=data, context={'request': self.request})
-        self.assertTrue(serializer.is_valid(), serializer.errors)
+        self.assertFalse(serializer.is_valid())
+        self.assertIn('equipo_cliente', str(serializer.errors))
 
     def test_validate_entrada_success(self):
         data = {
@@ -514,6 +520,10 @@ class MovimientoViewSetTest(APITestCase):
         ProductoStock.objects.create(producto=self.producto, cantidad=10, sucursal=self.sucursal)
 
         cliente = Cliente.objects.create(nombre='CView', sucursal=self.sucursal)
+        equipo = Equipo.objects.create(nombre='EQ-VIEW', marca=Marca.objects.create(nombre='MView'))
+        equipo_cliente = EquipoCliente.objects.create(
+            equipo=equipo, cliente=cliente, alias='EQView', contador_uso=5
+        )
 
         url = reverse('movimientos-list')
         data = {
@@ -522,6 +532,7 @@ class MovimientoViewSetTest(APITestCase):
                 {
                     'producto_id': self.producto.pk,
                     'cantidad': 3,
+                    'equipo_cliente_id': equipo_cliente.pk,
                 }
             ],
             'detalle_salida': {'cliente_id': cliente.pk, 'tecnico': 'Tec', 'subtipo': 'venta'},

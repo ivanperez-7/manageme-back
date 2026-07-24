@@ -137,10 +137,9 @@ class MovimientoSerializer(WritableNestedModelSerializer):
                         f'No hay suficientes unidades disponibles ({stock}) de {item["producto"].codigo_interno} en esta sucursal.'
                     )
 
-                # Renta requiere equipo_cliente; venta lo deja opcional.
-                if es_renta and not item.get('equipo_cliente'):
+                if not item.get('equipo_cliente'):
                     raise serializers.ValidationError(
-                        'Las salidas de renta requieren equipo_cliente en cada item.'
+                        'equipo_cliente requerido para todas las salidas.'
                     )
                 # cambio_anticipado solo aplica a renta (chequeo de contadores).
                 if not es_renta and item.get('cambio_anticipado'):

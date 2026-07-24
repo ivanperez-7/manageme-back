@@ -1,5 +1,6 @@
 import re
 
+from django.db import transaction
 from django.db.models import Count, Sum, Q, F
 from django.utils import timezone
 from django_filters import rest_framework as filters
@@ -7,7 +8,7 @@ from rest_framework import viewsets
 from rest_framework.decorators import action, api_view
 from rest_framework.response import Response
 
-from .models import Categoría, Marca, Proveedor, Equipo
+from .models import Categoría, Marca, Proveedor, Equipo, ProductoStock
 from .serializers import *
 from movimiento.models import Movimiento, MovimientoItem
 from organizacion.models import Cliente, EquipoCliente
@@ -37,6 +38,18 @@ class ProductoViewSet(ActivityLogMixin, viewsets.ModelViewSet):
 
     def get_queryset(self):
         return productos_queryset(self.request.branch_id)
+
+    def perform_create(self, serializer):
+        with transaction.atomic():
+            instance = serializer.save()
+            unidades = serializer.validated_data.get('unidades_iniciales')
+            if unidades:
+                ProductoStock.objects.create(
+                    producto=instance,
+                    sucursal_id=self.request.branch_id,
+                    cantidad=unidades,
+                )
+            self.log(instance, 'create')
     
     def update(self, request, *args, **kwargs):
         try:

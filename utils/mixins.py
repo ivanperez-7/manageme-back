@@ -1,6 +1,3 @@
-from django.db import transaction
-
-from productos.models import ProductoStock
 from system.models import RegistroActividad
 
 
@@ -44,16 +41,8 @@ class ActivityLogMixin:
         )
 
     def perform_create(self, serializer):
-        with transaction.atomic():
-            instance = serializer.save()
-            unidades = serializer.validated_data.get('unidades_iniciales')
-            if unidades:
-                ProductoStock.objects.create(
-                    producto=instance,
-                    sucursal_id=self.request.branch_id,
-                    cantidad=unidades,
-                )
-            self.log(instance, 'create')
+        instance = serializer.save()
+        self.log(instance, 'create')
 
     def perform_update(self, serializer):
         instance = serializer.save()

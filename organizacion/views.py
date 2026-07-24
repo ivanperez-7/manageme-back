@@ -35,7 +35,7 @@ class ClienteViewSet(ActivityLogMixin, viewsets.ModelViewSet):
         action = 'delete' if old_active and not instance.activo else 'update'
         self.log(instance, action)
 
-    @action(detail=True, methods=['get', 'post', 'delete'])
+    @action(detail=True, methods=['get', 'post', 'patch', 'delete'])
     def equipos(self, request, pk=None):
         if request.method == 'GET':
             # Obtener datos de uso del cliente
@@ -110,6 +110,45 @@ class ClienteViewSet(ActivityLogMixin, viewsets.ModelViewSet):
                 sucursal_id=request.branch_id,
             )
             return Response(status=status.HTTP_204_NO_CONTENT)
+
+        if request.method == 'PATCH':
+            cliente = self.get_object()
+            equipo_id = request.data.get('equipoId')
+
+            if not equipo_id:
+                return Response(
+                    {'detail': 'equipoId es requerido.'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            try:
+                equipo_cliente = cliente.equipos.get(equipo_id=equipo_id)
+            except EquipoCliente.DoesNotExist:
+                return Response(
+                    {'detail': 'El cliente no tiene este equipo asignado.'},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+
+            if 'alias' in request.data:
+                equipo_cliente.alias = request.data['alias']
+            if 'contador_uso' in request.data:
+                equipo_cliente.contador_uso = request.data['contador_uso']
+            equipo_cliente.save()
+
+            RegistroActividad.objects.create(
+                usuario=request.user, accion='update',
+                descripcion=f'Actualizó equipo #{equipo_id} del {cliente}',
+                segmentos=[
+                    {"texto": "Actualizó "},
+                    {"texto": f"el equipo #{equipo_id}", "tipo": "equipo", "id": equipo_id},
+                    {"texto": f" del {cliente} — "},
+                    {"texto": str(cliente), "tipo": "cliente", "id": cliente.pk},
+                ],
+                sucursal_id=request.branch_id,
+            )
+
+            serializer = EquipoClienteSerializer(equipo_cliente)
+            return Response(serializer.data)
 
         return Response(status=405)
 

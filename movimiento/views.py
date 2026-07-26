@@ -1,12 +1,15 @@
+import io
 from datetime import date
 
 from django.db.models import Prefetch
+from django.http import HttpResponse
 from django_filters import rest_framework as filters
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from .models import Movimiento, MovimientoItem
+from .pdf_utils import generar_pdf_salida
 from .serializers import MovimientoSerializer
 from system.models import RegistroActividad
 from utils.exports import xlsx_response
@@ -102,4 +105,57 @@ class MovimientoViewSet(ActivityLogMixin, viewsets.ModelViewSet):
             return Response(oldest.creado.date())
         return Response(date.today())
 
+    @action(detail=True, methods=['get'])
+    def descargar_salida(self, request, pk=None):
+        movimiento = self.get_object()
+        if movimiento.tipo != 'salida':
+            return Response({'detail': 'Solo movimientos de salida.'},
+                            status=status.HTTP_400_BAD_REQUEST)
 
+        detalle = getattr(movimiento, 'detalle_salida', None)
+        if not detalle:
+            return Response({'detail': 'El movimiento no tiene detalle de salida.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        items = list(movimiento.items.select_related(
+            'producto', 'equipo_cliente__equipo__marca'
+        ).all())
+        first = items[0] if items else None
+
+        snap = str(first.contador_uso_snapshot) if first and first.contador_uso_snapshot is not None else ''
+
+        data = {
+            'folio': f'{movimiento.id}',
+            'razon_social': detalle.cliente.nombre,
+            'fecha': movimiento.creado.strftime('%d/%m/%Y'),
+            'contador_color': snap,
+            'contador_bn': snap,
+            'marca': first.equipo_cliente.equipo.marca.nombre
+                     if first and first.equipo_cliente else '',
+            'modelo': first.equipo_cliente.equipo.nombre
+                      if first and first.equipo_cliente else '',
+            'serie': first.equipo_cliente.alias
+                     if first and first.equipo_cliente else '',
+            'items': [
+                {
+                    'cantidad': item.cantidad,
+                    'descripcion': item.producto.descripcion,
+                    'codigo': item.producto.codigo_interno,
+                    'costo': '',
+                }
+                for item in items
+            ],
+            'nombre_firma': '',
+        }
+
+        buf = io.BytesIO()
+        generar_pdf_salida(buf, data)
+        buf.seek(0)
+
+        return HttpResponse(
+            buf,
+            content_type='application/pdf',
+            headers={
+                'Content-Disposition': f'attachment; filename="salida-almacen-{movimiento.id}.pdf"',
+            },
+        )

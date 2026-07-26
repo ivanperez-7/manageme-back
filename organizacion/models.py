@@ -71,6 +71,8 @@ class EquipoCliente(models.Model):
     equipo = models.ForeignKey(Equipo, on_delete=models.CASCADE, related_name='clientes')
     cliente = models.ForeignKey(Cliente, on_delete=models.CASCADE, related_name='equipos')
     alias = models.CharField(max_length=100)
+    numero_serie = models.CharField(max_length=100, blank=True, default='')
+    comentarios = models.TextField(blank=True, default='')
     contador_uso = models.PositiveIntegerField()
 
     class Meta:

@@ -113,4 +113,4 @@ class EquipoClienteSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = EquipoCliente
-        fields = ['id', 'cliente_id', 'cliente_nombre', 'equipo_id', 'equipo_nombre', 'marca_nombre', 'alias', 'contador_uso']
+        fields = ['id', 'cliente_id', 'cliente_nombre', 'equipo_id', 'equipo_nombre', 'marca_nombre', 'alias', 'numero_serie', 'comentarios', 'contador_uso']

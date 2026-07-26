@@ -21,7 +21,7 @@ class MovimientoItemSerializer(serializers.ModelSerializer):
         source='producto'
     )
     equipo_cliente = InlineShapelessModelSerializer(
-        model=EquipoCliente, fields=['id', 'alias', 'contador_uso'], read_only=True
+        model=EquipoCliente, fields=['id', 'alias', 'numero_serie', 'comentarios', 'contador_uso'], read_only=True
     )
     equipo_cliente_id = serializers.PrimaryKeyRelatedField(
         queryset=EquipoCliente.objects.all(),

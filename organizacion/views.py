@@ -61,7 +61,9 @@ class ClienteViewSet(ActivityLogMixin, viewsets.ModelViewSet):
             cliente.equipos.create(
                 equipo_id=equipo_id,
                 contador_uso=request.data['contadorUso'],
-                alias=request.data.get('alias', '')
+                alias=request.data.get('alias', ''),
+                numero_serie=request.data.get('numeroSerie', ''),
+                comentarios=request.data.get('comentarios', '')
             )
             segmentos = [
                 {"texto": "Asignó "},
@@ -133,6 +135,10 @@ class ClienteViewSet(ActivityLogMixin, viewsets.ModelViewSet):
                 equipo_cliente.alias = request.data['alias']
             if 'contador_uso' in request.data:
                 equipo_cliente.contador_uso = request.data['contador_uso']
+            if 'numero_serie' in request.data:
+                equipo_cliente.numero_serie = request.data['numero_serie']
+            if 'comentarios' in request.data:
+                equipo_cliente.comentarios = request.data['comentarios']
             equipo_cliente.save()
 
             RegistroActividad.objects.create(

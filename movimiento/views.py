@@ -134,7 +134,7 @@ class MovimientoViewSet(ActivityLogMixin, viewsets.ModelViewSet):
                      if first and first.equipo_cliente else '',
             'modelo': first.equipo_cliente.equipo.nombre
                       if first and first.equipo_cliente else '',
-            'serie': first.equipo_cliente.alias
+            'serie': first.equipo_cliente.numero_serie or first.equipo_cliente.alias
                      if first and first.equipo_cliente else '',
             'items': [
                 {

@@ -128,8 +128,7 @@ class MovimientoViewSet(ActivityLogMixin, viewsets.ModelViewSet):
             'folio': f'{movimiento.id}',
             'razon_social': detalle.cliente.nombre,
             'fecha': movimiento.creado.strftime('%d/%m/%Y'),
-            'contador_color': snap,
-            'contador_bn': snap,
+            'contador_uso': snap,
             'marca': first.equipo_cliente.equipo.marca.nombre
                      if first and first.equipo_cliente else '',
             'modelo': first.equipo_cliente.equipo.nombre

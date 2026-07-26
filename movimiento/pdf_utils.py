@@ -23,24 +23,23 @@ PW, PH = HALF_LETTER_LANDSCAPE
 CW = PW - ML - MR
 
 FOLIO_W = 144
-FOLIO_H = 80
+FOLIO_H = 60
 FOLIO_X = PW - MR - FOLIO_W
 FOLIO_TOP = PH - MT
 FOLIO_HEADER_H = 20
+FOLIO_BOTTOM = FOLIO_TOP - FOLIO_H
 
-TITLE_BAR_H = 22
-TITLE_TOP = FOLIO_TOP - FOLIO_H - 4
-TITLE_BOTTOM = TITLE_TOP - TITLE_BAR_H
+CI_TITLE_TOP = FOLIO_BOTTOM - 18
+CI_TITLE_H = 22
+CI_TOP = CI_TITLE_TOP - CI_TITLE_H
+CI_ROW_H = 20
+CI_BOTTOM = CI_TOP - 3 * CI_ROW_H
 
-CI_TOP = TITLE_BOTTOM - 8
-CI_ROW_H = 18
-CI_GAP = 4
-
-TABLE_TOP = CI_TOP - 3 * (CI_ROW_H + CI_GAP) - 6
+TABLE_TOP = CI_BOTTOM - 4
 TABLE_BOTTOM = 50
 TABLE_HEADER_H = 18
 
-FOOTER_Y = 38
+FOOTER_Y = 28
 
 
 def _resolve_logo(data):
@@ -56,21 +55,29 @@ def _draw_header(c, data):
     logo_path = _resolve_logo(data)
     if os.path.exists(logo_path):
         try:
-            c.drawImage(logo_path, ML, FOLIO_TOP - 45, width=85, height=45, preserveAspectRatio=True)
+            c.drawImage(logo_path, ML, FOLIO_TOP - FOLIO_H, width=120, height=FOLIO_H,
+                        preserveAspectRatio=True)
         except Exception:
             logger.warning('Cannot draw logo: %s', logo_path)
 
     cx = PW / 2
-    c.setFont('Helvetica-Bold', 13)
-    c.drawCentredString(cx, FOLIO_TOP - 6, 'FRANCISCO JAVIER PEREZ RIVERO')
 
-    c.setFont('Helvetica', 8)
-    c.drawCentredString(cx, FOLIO_TOP - 22, 'VENTA, RENTA, SERVICIO Y CONSUMIBLES PARA')
-    c.drawCentredString(cx, FOLIO_TOP - 34, 'MULTIFUNCIONALES DIGITALES')
-    c.drawCentredString(cx, FOLIO_TOP - 44, 'DE ALTA PRODUCCIÓN')
+    c.setFont('Helvetica-Oblique', 13)
+    name = 'FRANCISCO JAVIER PEREZ RIVERO'
+    nw = c.stringWidth(name, 'Helvetica-Oblique', 13)
+    c.drawCentredString(cx, FOLIO_TOP - 12, name)
+    c.setLineWidth(0.5)
+    c.line(cx - nw / 2, FOLIO_TOP - 16, cx + nw / 2, FOLIO_TOP - 16)
 
-    c.setFont('Helvetica', 6.5)
-    c.drawCentredString(cx, FOLIO_TOP - 56,
+    c.setFont('Helvetica-Oblique', 8)
+    c.drawCentredString(cx, FOLIO_TOP - 28, 'VENTA, RENTA, SERVICIO Y CONSUMIBLES PARA')
+    c.drawCentredString(cx, FOLIO_TOP - 40, 'MULTIFUNCIONALES DIGITALES')
+    c.drawCentredString(cx, FOLIO_TOP - 50, 'DE ALTA PRODUCCIÓN')
+
+    c.setStrokeColor(colors.black)
+    c.setLineWidth(0.5)
+    c.setFont('Helvetica-Bold', 11)
+    c.drawCentredString(cx, FOLIO_BOTTOM - 14,
         'Av. 50 No. 247 x 47 y 49-C Francisco de Montejo / Tel: 195 07 83 Cel: 9994 04 92 18')
 
     _draw_folio_box(c, data)
@@ -91,7 +98,7 @@ def _draw_folio_box(c, data):
     c.drawCentredString(FOLIO_X + FOLIO_W / 2, num_top + 5, 'Folio')
 
     c.setFillColor(colors.white)
-    c.rect(FOLIO_X, num_bottom, FOLIO_W, num_top - num_bottom, stroke=1, fill=0)
+    c.rect(FOLIO_X, num_bottom, FOLIO_W, num_top - num_bottom, stroke=1, fill=1)
 
     c.setFillColor(colors.black)
     c.setFont('Helvetica-Bold', 16)
@@ -99,66 +106,68 @@ def _draw_folio_box(c, data):
                         data.get('folio', ''))
 
 
-def _draw_title(c, data):
-    c.setFillColor(colors.black)
+def _draw_customer_table(c, data):
+    y1 = CI_TOP
+    y2 = y1 - CI_ROW_H
+    y3 = y2 - CI_ROW_H
+    y4 = y3 - CI_ROW_H
+
     c.setStrokeColor(colors.black)
-    c.rect(ML, TITLE_BOTTOM, CW, TITLE_BAR_H, stroke=1, fill=1)
+    c.setLineWidth(0.5)
+
+    table_h = CI_TITLE_H + CI_TOP - y4
+
+    c.rect(ML, y4, CW, table_h, stroke=1, fill=0)
+
+    c.setFillColor(colors.black)
+    c.rect(ML, y1, CW, CI_TITLE_H, stroke=0, fill=1)
 
     c.setFillColor(colors.white)
     c.setFont('Helvetica-Bold', 12)
-    c.drawCentredString(PW / 2, TITLE_BOTTOM + 5, 'Salida de Almacén')
+    c.drawCentredString(PW / 2, y1 + 7, 'Salida de Almacén')
 
-
-def _draw_customer_info(c, data):
-    y = CI_TOP
-
+    c.setStrokeColor(colors.black)
     c.setFillColor(colors.black)
-    c.setFont('Helvetica-Bold', 8)
-    c.drawString(ML, y, 'Razon Social:')
-    c.setFont('Helvetica', 8)
-    c.drawString(ML + 70, y, data.get('razon_social', ''))
-    c.setLineWidth(0.5)
-    c.line(ML + 70, y - 2, ML + 400, y - 2)
+    c.line(ML, y2, ML + CW, y2)
+    c.line(ML, y3, ML + CW, y3)
+
+    fecha_x = ML + 370
+    c.line(fecha_x, y1, fecha_x, y2)
+
+    marca_end = ML + 110
+    modelo_end = ML + 310
+    c.line(marca_end, y3, marca_end, y4)
+    c.line(modelo_end, y3, modelo_end, y4)
 
     c.setFont('Helvetica-Bold', 8)
-    c.drawString(ML + 410, y, 'Fecha:')
+    c.drawString(ML + 6, y1 - 14, 'Razon Social:')
     c.setFont('Helvetica', 8)
-    c.drawString(ML + 445, y, data.get('fecha', ''))
-    c.line(ML + 445, y - 2, ML + CW, y - 2)
-
-    y -= CI_ROW_H + CI_GAP
+    c.drawString(ML + 74, y1 - 14, data.get('razon_social', ''))
 
     c.setFont('Helvetica-Bold', 8)
-    c.drawString(ML, y, 'Contador color:')
+    c.drawString(fecha_x + 6, y1 - 14, 'Fecha:')
     c.setFont('Helvetica', 8)
-    c.drawString(ML + 78, y, data.get('contador_color', ''))
-    c.line(ML + 78, y - 2, ML + 250, y - 2)
+    c.drawString(fecha_x + 40, y1 - 14, data.get('fecha', ''))
 
     c.setFont('Helvetica-Bold', 8)
-    c.drawString(ML + 270, y, 'Contador b/n:')
+    c.drawString(ML + 6, y2 - 14, 'Contador de uso:')
     c.setFont('Helvetica', 8)
-    c.drawString(ML + 345, y, data.get('contador_bn', ''))
-    c.line(ML + 345, y - 2, ML + CW, y - 2)
-
-    y -= CI_ROW_H + CI_GAP
+    c.drawString(ML + 88, y2 - 14, data.get('contador_uso', ''))
 
     c.setFont('Helvetica-Bold', 8)
-    c.drawString(ML, y, 'Marca:')
+    c.drawString(ML + 6, y3 - 14, 'Marca:')
     c.setFont('Helvetica', 8)
-    c.drawString(ML + 38, y, data.get('marca', ''))
-    c.line(ML + 38, y - 2, ML + 170, y - 2)
+    c.drawString(ML + 44, y3 - 14, data.get('marca', ''))
 
     c.setFont('Helvetica-Bold', 8)
-    c.drawString(ML + 185, y, 'Modelo:')
+    c.drawString(marca_end + 6, y3 - 14, 'Modelo:')
     c.setFont('Helvetica', 8)
-    c.drawString(ML + 228, y, data.get('modelo', ''))
-    c.line(ML + 228, y - 2, ML + 370, y - 2)
+    c.drawString(marca_end + 46, y3 - 14, data.get('modelo', ''))
 
     c.setFont('Helvetica-Bold', 8)
-    c.drawString(ML + 385, y, 'Serie:')
+    c.drawString(modelo_end + 6, y3 - 14, 'Serie:')
     c.setFont('Helvetica', 8)
-    c.drawString(ML + 418, y, data.get('serie', ''))
-    c.line(ML + 418, y - 2, ML + CW, y - 2)
+    c.drawString(modelo_end + 38, y3 - 14, data.get('serie', ''))
 
 
 def _draw_items_table(c, data):
@@ -234,8 +243,7 @@ def _draw_footer(c, data):
 def generar_pdf_salida(buf, data):
     c = canvas_module.Canvas(buf, pagesize=HALF_LETTER_LANDSCAPE)
     _draw_header(c, data)
-    _draw_title(c, data)
-    _draw_customer_info(c, data)
+    _draw_customer_table(c, data)
     _draw_items_table(c, data)
     _draw_footer(c, data)
     c.showPage()

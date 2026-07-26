@@ -117,13 +117,10 @@ class MovimientoViewSet(ActivityLogMixin, viewsets.ModelViewSet):
             return Response({'detail': 'El movimiento no tiene detalle de salida.'},
                             status=status.HTTP_400_BAD_REQUEST)
 
-        items = list(movimiento.items.select_related(
-            'producto', 'equipo_cliente__equipo__marca'
-        ).all())
+        items = list(movimiento.items.select_related('producto', 'equipo_cliente__equipo__marca').all())
         first = items[0] if items else None
 
-        snap = str(first.contador_uso_snapshot) if first and first.contador_uso_snapshot is not None else ''
-
+        snap = f'{first.contador_uso_snapshot:,d}' if first and first.contador_uso_snapshot is not None else ''
         data = {
             'folio': f'{movimiento.id}',
             'razon_social': detalle.cliente.nombre,

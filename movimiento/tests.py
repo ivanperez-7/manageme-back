@@ -120,9 +120,9 @@ class MovimientoModelTest(TestCase):
         self.assertTrue(movimiento.aprobado)
         stock = ProductoStock.objects.get(producto=producto, sucursal_id=1)
         self.assertEqual(stock.cantidad, 7)
-        # Venta no chequea contadores → no se guarda snapshot.
+        # Venta ahora también guarda el snapshot del contador.
         item.refresh_from_db()
-        self.assertIsNone(item.contador_uso_snapshot)
+        self.assertEqual(item.contador_uso_snapshot, 100)
 
     def test_approve_salida_renta_sets_snapshot(self):
         producto = _create_producto(codigo='P002R')

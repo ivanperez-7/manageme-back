@@ -73,6 +73,9 @@ class Movimiento(models.Model):
             for item in self.items.all():
                 if es_renta:
                     item.verificar_vida_util()
+                elif item.equipo_cliente:
+                    item.contador_uso_snapshot = item.equipo_cliente.contador_uso
+                    item.save(update_fields=['contador_uso_snapshot'])
                 stock = ProductoStock.objects.select_for_update().get(
                     producto=item.producto,
                     sucursal=self.sucursal,

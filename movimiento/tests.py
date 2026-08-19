@@ -723,6 +723,47 @@ class MovimientoViewSetTest(APITestCase):
         self.assertEqual(response.status_code, 400)
         self.assertIn('ya aprobado', str(response.data['detail']))
 
+    def test_update_approved_rejected(self):
+        movimiento = Movimiento.objects.create(
+            tipo='entrada', creado_por=self.admin, aprobado=True, sucursal=self.sucursal
+        )
+        DetalleEntrada.objects.create(
+            movimiento=movimiento, numero_factura='F-LOCK', recibido_por=self.admin
+        )
+        MovimientoItem.objects.create(
+            movimiento=movimiento, producto=self.producto, cantidad=5
+        )
+
+        url = reverse('movimientos-detail', kwargs={'pk': movimiento.pk})
+        response = self.client.patch(
+            url, {'comentarios': 'editado'}, format='json',
+            HTTP_X_BRANCH_ID=self.sucursal.id,
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('aprobado', str(response.data['detail']))
+        movimiento.refresh_from_db()
+        self.assertIsNone(movimiento.comentarios)
+
+    def test_delete_approved_rejected(self):
+        ProductoStock.objects.create(producto=self.producto, cantidad=10, sucursal=self.sucursal)
+        movimiento = Movimiento.objects.create(
+            tipo='entrada', creado_por=self.admin, aprobado=True, sucursal=self.sucursal
+        )
+        DetalleEntrada.objects.create(
+            movimiento=movimiento, numero_factura='F-DEL', recibido_por=self.admin
+        )
+        MovimientoItem.objects.create(
+            movimiento=movimiento, producto=self.producto, cantidad=5
+        )
+
+        url = reverse('movimientos-detail', kwargs={'pk': movimiento.pk})
+        response = self.client.delete(url, HTTP_X_BRANCH_ID=self.sucursal.id)
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('aprobado', str(response.data['detail']))
+        self.assertTrue(Movimiento.objects.filter(pk=movimiento.pk).exists())
+        stock = ProductoStock.objects.get(producto=self.producto, sucursal=self.sucursal)
+        self.assertEqual(stock.cantidad, 10)
+
     @patch('movimiento.models.validar_factura_entrada')
     def test_aprobar_endpoint_rejects_invalid_factura(self, mock_val):
         mock_val.side_effect = ValidationError('Factura invalida')

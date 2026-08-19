@@ -4,7 +4,7 @@ from datetime import date
 from django.db.models import Prefetch
 from django.http import HttpResponse
 from django_filters import rest_framework as filters
-from rest_framework import status, viewsets
+from rest_framework import serializers, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
@@ -52,6 +52,16 @@ class MovimientoViewSet(ActivityLogMixin, viewsets.ModelViewSet):
             {"texto": str(instance), "tipo": "movimiento", "id": instance.pk},
         ]
         return f"{self.verbs[action]} el {instance}", segmentos
+
+    def perform_update(self, serializer):
+        if serializer.instance.aprobado:
+            raise serializers.ValidationError({'detail': 'No se puede modificar un movimiento aprobado.'})
+        super().perform_update(serializer)
+
+    def perform_destroy(self, instance):
+        if instance.aprobado:
+            raise serializers.ValidationError({'detail': 'No se puede eliminar un movimiento aprobado.'})
+        super().perform_destroy(instance)
 
     @action(detail=True, methods=['post'])
     def aprobar(self, request, pk=None):

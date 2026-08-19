@@ -39,6 +39,8 @@ class Movimiento(models.Model):
 
     @transaction.atomic
     def approve(self, user):
+        # ponytail: lock row vs doble aprobación concurrente; no-op en SQLite, efectivo en Postgres
+        self = Movimiento.objects.select_for_update().get(pk=self.pk)
         if self.items.exclude(producto__status='activo').exists():
             raise ValueError('No se pueden aprobar movimientos con productos inactivos.')
 

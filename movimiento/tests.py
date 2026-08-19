@@ -116,7 +116,8 @@ class MovimientoModelTest(TestCase):
         )
 
         movimiento.approve(self.admin)
-
+        movimiento.refresh_from_db()
+        
         self.assertTrue(movimiento.aprobado)
         stock = ProductoStock.objects.get(producto=producto, sucursal_id=1)
         self.assertEqual(stock.cantidad, 7)
@@ -180,6 +181,7 @@ class MovimientoModelTest(TestCase):
         )
 
         movimiento.approve(self.admin)
+        movimiento.refresh_from_db()
         self.assertTrue(movimiento.aprobado)
 
     def test_approve_salida_rejects_insufficient_stock(self):

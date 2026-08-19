@@ -336,6 +336,47 @@ class MovimientoItemModelTest(TestCase):
         item.refresh_from_db()
         self.assertEqual(item.contador_uso_snapshot, 50)
 
+    def test_verificar_vida_util_ignores_sibling_items_same_movimiento(self):
+        """Dos items del mismo producto/equipo en UN movimiento no deben
+        tomarse como baseline entre sí: ambos se comparan contra la entrega previa."""
+        sucursal = Sucursal.objects.create(nombre='Suc VU3')
+        cliente = Cliente.objects.create(nombre='Cliente VU3', sucursal=sucursal)
+        equipo = Equipo.objects.create(nombre='EQ-VU3', marca=Marca.objects.create(nombre='MVU3'))
+        eq_cli = EquipoCliente.objects.create(
+            equipo=equipo, cliente=cliente, alias='EQ-VU3', contador_uso=100
+        )
+
+        prev_mov = Movimiento.objects.create(
+            tipo='salida', creado_por=self.admin,
+            creado=timezone.now() - timezone.timedelta(days=30),
+            aprobado=True, sucursal_id=1,
+        )
+        DetalleSalida.objects.create(movimiento=prev_mov, cliente=cliente, subtipo='renta')
+        MovimientoItem.objects.create(
+            movimiento=prev_mov,
+            producto=self.producto,
+            cantidad=1,
+            equipo_cliente=eq_cli,
+            contador_uso_snapshot=50,
+        )
+
+        movimiento = Movimiento.objects.create(tipo='salida', creado_por=self.admin, sucursal_id=1)
+        DetalleSalida.objects.create(movimiento=movimiento, cliente=cliente, subtipo='renta')
+        item1 = MovimientoItem.objects.create(
+            movimiento=movimiento, producto=self.producto, cantidad=1, equipo_cliente=eq_cli,
+        )
+        item2 = MovimientoItem.objects.create(
+            movimiento=movimiento, producto=self.producto, cantidad=1, equipo_cliente=eq_cli,
+        )
+
+        item1.verificar_vida_util()
+        item2.verificar_vida_util()
+
+        item1.refresh_from_db()
+        item2.refresh_from_db()
+        self.assertEqual(item1.contador_uso_snapshot, 100)
+        self.assertEqual(item2.contador_uso_snapshot, 100)
+
     def test_vida_util_raises_when_neither_threshold_reached(self):
         # unidades=1000 (uso=0) y dias=30 pero solo pasaron 10 días → ninguno alcanzado
         item = self._setup_dias(vida_util_dias=30, vida_util_unidades=1000, dias_prev=10)

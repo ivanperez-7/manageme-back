@@ -158,7 +158,7 @@ class MovimientoItem(models.Model):
             producto=self.producto,
             equipo_cliente=self.equipo_cliente,
             movimiento_creado=self.movimiento.creado,
-            exclude_item_pk=self.pk,
+            exclude_movimiento_id=self.movimiento_id,
         )
 
         if not usage['alcanzada'] and not self.cambio_anticipado:

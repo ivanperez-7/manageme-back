@@ -1,7 +1,7 @@
 from django.utils import timezone
 
 
-def compute_vida_util_usage(producto, equipo_cliente, movimiento_creado=None, exclude_item_pk=None):
+def compute_vida_util_usage(producto, equipo_cliente, movimiento_creado=None, exclude_movimiento_id=None):
     """Checks whether a rental item has reached its vida útil thresholds.
     
 
@@ -26,8 +26,8 @@ def compute_vida_util_usage(producto, equipo_cliente, movimiento_creado=None, ex
         equipo_cliente=equipo_cliente,
         contador_uso_snapshot__isnull=False,
     )
-    if exclude_item_pk is not None:
-        ultima = ultima.exclude(pk=exclude_item_pk)
+    if exclude_movimiento_id is not None:
+        ultima = ultima.exclude(movimiento_id=exclude_movimiento_id)
     ultima = ultima.select_related('movimiento').order_by('-movimiento__creado').first()
 
     if not ultima:

@@ -744,6 +744,31 @@ class MovimientoViewSetTest(APITestCase):
         movimiento.refresh_from_db()
         self.assertIsNone(movimiento.comentarios)
 
+    def test_update_keeps_creado_por(self):
+        movimiento = Movimiento.objects.create(
+            tipo='entrada', creado_por=self.admin, sucursal=self.sucursal
+        )
+        DetalleEntrada.objects.create(
+            movimiento=movimiento, numero_factura='F-KEEP', recibido_por=self.admin
+        )
+        MovimientoItem.objects.create(
+            movimiento=movimiento, producto=self.producto, cantidad=5
+        )
+
+        oper = _create_operativo()
+        oper.profile.sucursales.add(self.sucursal)
+        self.client.force_login(oper)
+
+        url = reverse('movimientos-detail', kwargs={'pk': movimiento.pk})
+        response = self.client.patch(
+            url, {'comentarios': 'editado'}, format='json',
+            HTTP_X_BRANCH_ID=self.sucursal.id,
+        )
+        self.assertEqual(response.status_code, 200)
+        movimiento.refresh_from_db()
+        self.assertEqual(movimiento.creado_por, self.admin)
+        self.assertEqual(movimiento.comentarios, 'editado')
+
     def test_delete_approved_rejected(self):
         ProductoStock.objects.create(producto=self.producto, cantidad=10, sucursal=self.sucursal)
         movimiento = Movimiento.objects.create(

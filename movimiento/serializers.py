@@ -162,6 +162,7 @@ class MovimientoSerializer(WritableNestedModelSerializer):
                             f'motivo para forzar la salida.'
                         )
 
-        data['creado_por'] = self.context['request'].user
-        data['sucursal_id'] = self.context['request'].branch_id
+        if self.instance is None:
+            data['creado_por'] = self.context['request'].user
+            data['sucursal_id'] = self.context['request'].branch_id
         return data

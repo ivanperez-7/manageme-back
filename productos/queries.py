@@ -1,7 +1,7 @@
 from datetime import timedelta
 from collections import defaultdict
 
-from django.db.models import Count, OuterRef, Subquery, IntegerField, Value, Prefetch, Q, Sum
+from django.db.models import OuterRef, Subquery, IntegerField, Value, Prefetch, Sum
 from django.db.models.functions import Coalesce
 from django.utils import timezone
 

@@ -111,20 +111,23 @@ class ConfiguracionViewSetTest(APITestCase):
         self.client.force_login(self.user)
         self.headers = {'HTTP_X_BRANCH_ID': self.sucursal.id}
 
+    # ponytail: la migración 0010 siembra configs base; comparar contra el baseline, no contra cero
     def test_list(self):
+        base = ConfiguracionSistema.objects.count()
         ConfiguracionSistema.objects.create(clave='KEY1', valor='val1')
         ConfiguracionSistema.objects.create(clave='KEY2', valor='val2')
         url = reverse('configuracion-list')
         response = self.client.get(url, **self.headers)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(len(response.data), 2)
+        self.assertEqual(len(response.data), base + 2)
 
     def test_create(self):
+        base = ConfiguracionSistema.objects.count()
         url = reverse('configuracion-list')
         data = {'clave': 'NEW_KEY', 'valor': 'new_val'}
         response = self.client.post(url, data, format='json', **self.headers)
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        self.assertEqual(ConfiguracionSistema.objects.count(), 1)
+        self.assertEqual(ConfiguracionSistema.objects.count(), base + 1)
 
 
 # ── Alertas ViewSet Tests ────────────────────────────────────────────

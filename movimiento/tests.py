@@ -1,5 +1,5 @@
+import unittest
 from unittest.mock import patch
-import datetime
 
 from django.contrib.auth.models import User
 from django.test import TestCase
@@ -832,6 +832,10 @@ class MovimientoViewSetTest(APITestCase):
         stock = ProductoStock.objects.get(producto=self.producto, sucursal=self.sucursal)
         self.assertEqual(stock.cantidad, 10)
 
+    @unittest.skip(
+        'validar_factura_entrada está desactivado en approve() (requiere Gmail OAuth: '
+        'credentials.json/token.json). Reactivar el test junto con la validación.'
+    )
     @patch('movimiento.models.validar_factura_entrada')
     def test_aprobar_endpoint_rejects_invalid_factura(self, mock_val):
         mock_val.side_effect = ValidationError('Factura invalida')

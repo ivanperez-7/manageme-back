@@ -1,8 +1,10 @@
 from django.contrib.auth.models import User
 from django.core.cache import cache
 from django.db.models import F
+from django_filters import rest_framework as dj_filters
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
+from rest_framework.filters import SearchFilter
 from rest_framework.response import Response
 
 from system.models import RegistroActividad
@@ -19,6 +21,9 @@ __all__ = ['ClienteViewSet', 'UserViewSet', 'SucursalViewSet']
 
 class ClienteViewSet(ActivityLogMixin, viewsets.ModelViewSet):
     serializer_class = ClienteSerializer
+    filter_backends = [dj_filters.DjangoFilterBackend, SearchFilter]
+    filterset_fields = ['tipo']
+    search_fields = ['nombre', 'rfc', 'telefono', 'email']
 
     def get_queryset(self):
         return Cliente.objects.filter(activo=True, sucursal=self.request.branch_id)

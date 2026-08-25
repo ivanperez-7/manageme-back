@@ -115,6 +115,30 @@ class ClienteViewSetTest(APITestCase):
         response = self.client.get(url, **self.headers)
         self.assertEqual(len(response.data), 1)
 
+    def test_search(self):
+        Cliente.objects.create(
+            nombre='María López', rfc='XAXX010101000',
+            telefono='5512345678', sucursal=self.sucursal
+        )
+        url = reverse('cliente-list')
+        response = self.client.get(url, {'search': 'pedro'}, **self.headers)
+        self.assertEqual([c['nombre'] for c in response.data], ['Pedro'])
+        response = self.client.get(url, {'search': '5512345678'}, **self.headers)
+        self.assertEqual([c['nombre'] for c in response.data], ['María López'])
+        # Otro cliente de otra sucursal nunca aparece en la búsqueda
+        response = self.client.get(url, {'search': 'maría'}, **self.headers)
+        self.assertEqual(len(response.data), 1)
+
+    def test_filter_tipo(self):
+        Cliente.objects.create(
+            nombre='Empresa SA', tipo='moral', sucursal=self.sucursal
+        )
+        url = reverse('cliente-list')
+        response = self.client.get(url, {'tipo': 'moral'}, **self.headers)
+        self.assertEqual([c['nombre'] for c in response.data], ['Empresa SA'])
+        response = self.client.get(url, {'tipo': 'fisica'}, **self.headers)
+        self.assertEqual([c['nombre'] for c in response.data], ['Pedro'])
+
     def test_create(self):
         url = reverse('cliente-list')
         data = {'nombre': 'Nuevo Cliente'}

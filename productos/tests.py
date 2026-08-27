@@ -750,3 +750,94 @@ class ReordenTest(APITestCase):
         response = self.client.get('/api/v1/productos/reorden/', **self.headers)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data, [])
+
+
+# ── Partial Unique Constraints (status='activo' only) ─────────────────
+
+
+class ProductoUnicoActivoTest(APITestCase):
+    def setUp(self):
+        self.admin = User.objects.create_user(username='admin_uniq', password='pass')
+        PerfilUsuario.objects.create(usuario=self.admin, rol='admin')
+        self.sucursal = Sucursal.objects.create(nombre='Suc Uniq')
+        self.admin.profile.sucursales.add(self.sucursal)
+        self.client.force_login(self.admin)
+        self.headers = {'HTTP_X_BRANCH_ID': self.sucursal.id}
+
+        self.categoria = Categoría.objects.create(nombre='Cat Uniq')
+        self.proveedor = Proveedor.objects.create(nombre='Prov Uniq')
+
+    def _payload(self, codigo, sku):
+        return {
+            'codigo_interno': codigo,
+            'descripcion': f'Desc {codigo}',
+            'categoria_id': self.categoria.id,
+            'equipos_id': [],
+            'sku': sku,
+            'min_stock': 1,
+            'vida_util_unidades': 100,
+            'proveedor_id': self.proveedor.id,
+        }
+
+    def test_sku_reuse_after_deactivate(self):
+        url = reverse('producto-list')
+
+        r1 = self.client.post(url, self._payload('P-A', 'SKU-X'), format='json', **self.headers)
+        self.assertEqual(r1.status_code, status.HTTP_201_CREATED, r1.data)
+
+        patch = reverse('producto-detail', args=[r1.data['id']])
+        r2 = self.client.patch(patch, {'status': 'inactivo'}, format='json', **self.headers)
+        self.assertEqual(r2.status_code, status.HTTP_200_OK, r2.data)
+
+        r3 = self.client.post(url, self._payload('P-B', 'SKU-X'), format='json', **self.headers)
+        self.assertEqual(r3.status_code, status.HTTP_201_CREATED, r3.data)
+
+    def test_codigo_interno_reuse_after_deactivate(self):
+        url = reverse('producto-list')
+
+        r1 = self.client.post(url, self._payload('P-COD', 'SKU-C1'), format='json', **self.headers)
+        self.assertEqual(r1.status_code, status.HTTP_201_CREATED, r1.data)
+
+        patch = reverse('producto-detail', args=[r1.data['id']])
+        r2 = self.client.patch(patch, {'status': 'inactivo'}, format='json', **self.headers)
+        self.assertEqual(r2.status_code, status.HTTP_200_OK, r2.data)
+
+        r3 = self.client.post(url, self._payload('P-COD', 'SKU-C2'), format='json', **self.headers)
+        self.assertEqual(r3.status_code, status.HTTP_201_CREATED, r3.data)
+
+    def test_active_sku_collision_returns_400(self):
+        url = reverse('producto-list')
+
+        r1 = self.client.post(url, self._payload('P-D1', 'SKU-DUP'), format='json', **self.headers)
+        self.assertEqual(r1.status_code, status.HTTP_201_CREATED, r1.data)
+
+        r2 = self.client.post(url, self._payload('P-D2', 'SKU-DUP'), format='json', **self.headers)
+        self.assertEqual(r2.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('sku', r2.data)
+
+    def test_active_codigo_interno_collision_returns_400(self):
+        url = reverse('producto-list')
+
+        r1 = self.client.post(url, self._payload('P-COL', 'SKU-E1'), format='json', **self.headers)
+        self.assertEqual(r1.status_code, status.HTTP_201_CREATED, r1.data)
+
+        r2 = self.client.post(url, self._payload('P-COL', 'SKU-E2'), format='json', **self.headers)
+        self.assertEqual(r2.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('codigo_interno', r2.data)
+
+    def test_db_constraint_still_blocks_active_duplicate(self):
+        # Bypass serializer validation: call save() directly with the same sku on two active rows.
+        # The DB partial unique constraint should still raise IntegrityError.
+        from django.db import IntegrityError, transaction
+        Producto.objects.create(
+            codigo_interno='P-DB1', descripcion='A', categoria=self.categoria,
+            unidad_medida='pieza', sku='SKU-DB', min_stock=1,
+            proveedor=self.proveedor, vida_util_unidades=100,
+        )
+        with self.assertRaises(IntegrityError):
+            with transaction.atomic():
+                Producto.objects.create(
+                    codigo_interno='P-DB2', descripcion='B', categoria=self.categoria,
+                    unidad_medida='pieza', sku='SKU-DB', min_stock=1,
+                    proveedor=self.proveedor, vida_util_unidades=100,
+                )

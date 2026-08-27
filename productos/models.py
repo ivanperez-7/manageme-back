@@ -66,7 +66,7 @@ class Producto(models.Model):
         ('inactivo', 'Inactivo'),
     ]
 
-    codigo_interno = models.CharField(max_length=50, unique=True)
+    codigo_interno = models.CharField(max_length=50)
     descripcion = models.CharField(max_length=255)
     categoria = models.ForeignKey(Categoría, on_delete=models.PROTECT)
     equipos = models.ManyToManyField(
@@ -76,7 +76,7 @@ class Producto(models.Model):
     )
     unidad_medida = models.CharField(max_length=20, default='pieza')
 
-    sku = models.CharField(max_length=255, unique=True)
+    sku = models.CharField(max_length=255)
     min_stock = models.PositiveIntegerField()
     # Vida útil medida por unidades de uso y/o por días; lo que ocurra primero.
     # default=1 en unidades para no romper altas sin especificar; poner null explícito
@@ -96,6 +96,16 @@ class Producto(models.Model):
             models.CheckConstraint(
                 condition=models.Q(vida_util_unidades__isnull=False) | models.Q(vida_util_dias__isnull=False),
                 name='producto_vida_util_al_menos_uno',
+            ),
+            models.UniqueConstraint(
+                fields=['codigo_interno'],
+                condition=models.Q(status='activo'),
+                name='producto_codigo_interno_activo_uniq',
+            ),
+            models.UniqueConstraint(
+                fields=['sku'],
+                condition=models.Q(status='activo'),
+                name='producto_sku_activo_uniq',
             ),
         ]
     

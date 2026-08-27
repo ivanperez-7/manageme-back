@@ -80,6 +80,23 @@ class ProductoSerializer(serializers.ModelSerializer):
         fields = '__all__'
         read_only_fields = ['id', 'creado', 'actualizado']
 
+    def _validate_activo_unico(self, field_name, value):
+        qs = Producto.objects.filter(**{field_name: value, 'status': 'activo'})
+        if self.instance is not None:
+            qs = qs.exclude(pk=self.instance.pk)
+        if qs.exists():
+            raise serializers.ValidationError(
+                f'Ya existe un producto activo con este {field_name}.'
+            )
+
+    def validate_sku(self, value):
+        self._validate_activo_unico('sku', value)
+        return value
+
+    def validate_codigo_interno(self, value):
+        self._validate_activo_unico('codigo_interno', value)
+        return value
+
     def validate(self, data):
         # ≥1 umbral de vida útil (espeja CheckConstraint; devuelve 400 en vez de 500).
         unidades = data.get('vida_util_unidades', getattr(self.instance, 'vida_util_unidades', None))

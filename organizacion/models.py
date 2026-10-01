@@ -78,7 +78,7 @@ class EquipoCliente(models.Model):
     class Meta:
         verbose_name = 'Equipo de cliente'
         verbose_name_plural = 'Equipos de clientes'
-        unique_together = ('cliente', 'numero_serie')
+        unique_together = ('cliente', 'equipo', 'numero_serie')
 
     def __str__(self):
         return f'Equipo {self.equipo.nombre} para Cliente {self.cliente.nombre} ({self.alias})'

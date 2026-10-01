@@ -1,4 +1,5 @@
 from django.contrib.auth.models import User
+from django.db import transaction
 from django.test import TestCase
 from django.urls import reverse
 from rest_framework.test import APITestCase
@@ -49,15 +50,33 @@ class EquipoClienteModelTest(TestCase):
     def test_unique_together(self):
         marca = Marca.objects.create(nombre='MarcaY')
         equipo = Equipo.objects.create(nombre='EQ-200', marca=marca)
+        otro_equipo = Equipo.objects.create(nombre='EQ-201', marca=marca)
         sucursal = Sucursal.objects.create(nombre='Suc UT')
         cliente = Cliente.objects.create(nombre='Ana', sucursal=sucursal)
         EquipoCliente.objects.create(
-            equipo=equipo, cliente=cliente, alias='Taller', contador_uso=100
+            equipo=equipo, cliente=cliente, alias='Taller',
+            numero_serie='SN-1', contador_uso=100,
         )
-        with self.assertRaises(Exception):
+        # Misma terna (cliente, equipo, serie) → prohibida.
+        with self.assertRaises(Exception), transaction.atomic():
             EquipoCliente.objects.create(
-                equipo=equipo, cliente=cliente, alias='Duplicado', contador_uso=200
+                equipo=equipo, cliente=cliente, alias='Duplicado',
+                numero_serie='SN-1', contador_uso=200,
             )
+        # Mismo equipo con otra serie → otra unidad, permitida.
+        EquipoCliente.objects.create(
+            equipo=equipo, cliente=cliente, alias='Segunda',
+            numero_serie='SN-2', contador_uso=0,
+        )
+        # Serie vacía repetida para el mismo equipo → prohibida.
+        EquipoCliente.objects.create(
+            equipo=otro_equipo, cliente=cliente, alias='Tercera', contador_uso=0,
+        )
+        with self.assertRaises(Exception), transaction.atomic():
+            EquipoCliente.objects.create(
+                equipo=otro_equipo, cliente=cliente, alias='Cuarta', contador_uso=0,
+            )
+        self.assertEqual(EquipoCliente.objects.filter(cliente=cliente).count(), 3)
 
 
 # ── Serializer Tests ─────────────────────────────────────────────────
@@ -186,6 +205,189 @@ class ClienteViewSetTest(APITestCase):
         response = self.client.post(url, data, format='json', **self.headers)
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertEqual(self.cliente.equipos.count(), 1)
+
+    def _crear_equipo(self, nombre):
+        marca, _ = Marca.objects.get_or_create(nombre=f'Marca {nombre}')
+        return Equipo.objects.create(nombre=nombre, marca=marca)
+
+    def test_equipos_post_mismo_equipo_serie_vacia_rejected(self):
+        equipo = self._crear_equipo('E-BLANK')
+        url = reverse('cliente-equipos', kwargs={'pk': self.cliente.pk})
+        data = {'equipoId': equipo.pk, 'contadorUso': 10, 'alias': 'A'}
+        self.assertEqual(
+            self.client.post(url, data, format='json', **self.headers).status_code,
+            status.HTTP_201_CREATED,
+        )
+        response = self.client.post(url, data, format='json', **self.headers)
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('número de serie', str(response.data))
+
+    def test_equipos_post_mismo_equipo_otra_serie_ok(self):
+        equipo = self._crear_equipo('E-2UNITS')
+        url = reverse('cliente-equipos', kwargs={'pk': self.cliente.pk})
+        data = {'equipoId': equipo.pk, 'contadorUso': 10, 'alias': 'A'}
+        self.client.post(url, data, format='json', **self.headers)
+        response = self.client.post(
+            url, {**data, 'alias': 'B', 'numeroSerie': 'SN-2'},
+            format='json', **self.headers,
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(self.cliente.equipos.filter(equipo=equipo).count(), 2)
+
+    def test_equipos_post_serie_duplicada_rejected(self):
+        equipo = self._crear_equipo('E-DUPSN')
+        url = reverse('cliente-equipos', kwargs={'pk': self.cliente.pk})
+        data = {'equipoId': equipo.pk, 'contadorUso': 10, 'alias': 'A', 'numeroSerie': 'SN-1'}
+        self.client.post(url, data, format='json', **self.headers)
+        response = self.client.post(
+            url, {**data, 'alias': 'B'}, format='json', **self.headers
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_equipos_post_mismo_serial_otro_equipo_ok(self):
+        url = reverse('cliente-equipos', kwargs={'pk': self.cliente.pk})
+        for nombre in ('E-SN-A', 'E-SN-B'):
+            equipo = self._crear_equipo(nombre)
+            response = self.client.post(
+                url,
+                {
+                    'equipoId': equipo.pk, 'contadorUso': 10,
+                    'alias': 'A', 'numeroSerie': 'SN-X',
+                },
+                format='json', **self.headers,
+            )
+            self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+    def test_equipos_post_contador_invalido(self):
+        equipo = self._crear_equipo('E-BADCOUNT')
+        url = reverse('cliente-equipos', kwargs={'pk': self.cliente.pk})
+        response = self.client.post(
+            url, {'equipoId': equipo.pk, 'alias': 'A'}, format='json', **self.headers
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_equipos_patch_por_equipo_cliente_id(self):
+        equipo = self._crear_equipo('E-PATCHBYID')
+        ec = EquipoCliente.objects.create(
+            equipo=equipo, cliente=self.cliente, alias='Antes',
+            numero_serie='SN-1', contador_uso=10,
+        )
+        url = reverse('cliente-equipos', kwargs={'pk': self.cliente.pk})
+        response = self.client.patch(
+            url,
+            {'equipoClienteId': ec.pk, 'alias': 'Después', 'numero_serie': 'SN-1B'},
+            format='json', **self.headers,
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        ec.refresh_from_db()
+        self.assertEqual(ec.alias, 'Después')
+        self.assertEqual(ec.numero_serie, 'SN-1B')
+
+    def test_equipos_patch_ambiguo_equipo_id_rejected(self):
+        equipo = self._crear_equipo('E-AMBIG')
+        EquipoCliente.objects.create(
+            equipo=equipo, cliente=self.cliente, alias='U1',
+            numero_serie='SN-1', contador_uso=1,
+        )
+        EquipoCliente.objects.create(
+            equipo=equipo, cliente=self.cliente, alias='U2',
+            numero_serie='SN-2', contador_uso=1,
+        )
+        url = reverse('cliente-equipos', kwargs={'pk': self.cliente.pk})
+        response = self.client.patch(
+            url, {'equipoId': equipo.pk, 'alias': 'X'},
+            format='json', **self.headers,
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('equipoClienteId', str(response.data))
+
+    def test_equipos_patch_serie_duplicada_rejected(self):
+        equipo = self._crear_equipo('E-PATCHDUP')
+        u1 = EquipoCliente.objects.create(
+            equipo=equipo, cliente=self.cliente, alias='U1',
+            numero_serie='SN-1', contador_uso=1,
+        )
+        u2 = EquipoCliente.objects.create(
+            equipo=equipo, cliente=self.cliente, alias='U2',
+            numero_serie='SN-2', contador_uso=1,
+        )
+        url = reverse('cliente-equipos', kwargs={'pk': self.cliente.pk})
+        response = self.client.patch(
+            url, {'equipoClienteId': u2.pk, 'numero_serie': 'SN-1'},
+            format='json', **self.headers,
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        u1.refresh_from_db()
+        self.assertEqual(u1.numero_serie, 'SN-1')
+
+    def test_equipos_patch_serie_vacia_con_hermana_rejected(self):
+        equipo = self._crear_equipo('E-PATCHBLANK')
+        EquipoCliente.objects.create(
+            equipo=equipo, cliente=self.cliente, alias='U1',
+            numero_serie='SN-1', contador_uso=1,
+        )
+        u2 = EquipoCliente.objects.create(
+            equipo=equipo, cliente=self.cliente, alias='U2',
+            numero_serie='SN-2', contador_uso=1,
+        )
+        url = reverse('cliente-equipos', kwargs={'pk': self.cliente.pk})
+        response = self.client.patch(
+            url, {'equipoClienteId': u2.pk, 'numero_serie': '  '},
+            format='json', **self.headers,
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_equipos_delete_por_equipo_cliente_id(self):
+        equipo = self._crear_equipo('E-DELBYID')
+        EquipoCliente.objects.create(
+            equipo=equipo, cliente=self.cliente, alias='U1',
+            numero_serie='SN-1', contador_uso=1,
+        )
+        u2 = EquipoCliente.objects.create(
+            equipo=equipo, cliente=self.cliente, alias='U2',
+            numero_serie='SN-2', contador_uso=1,
+        )
+        url = reverse('cliente-equipos', kwargs={'pk': self.cliente.pk})
+        response = self.client.delete(
+            url, {'equipoClienteId': u2.pk}, format='json',
+            HTTP_ACCEPT='application/json', **self.headers,
+        )
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertEqual(self.cliente.equipos.filter(equipo=equipo).count(), 1)
+
+    def test_equipos_delete_ambiguo_equipo_id_rejected(self):
+        equipo = self._crear_equipo('E-DELAMBIG')
+        EquipoCliente.objects.create(
+            equipo=equipo, cliente=self.cliente, alias='U1',
+            numero_serie='SN-1', contador_uso=1,
+        )
+        EquipoCliente.objects.create(
+            equipo=equipo, cliente=self.cliente, alias='U2',
+            numero_serie='SN-2', contador_uso=1,
+        )
+        url = reverse('cliente-equipos', kwargs={'pk': self.cliente.pk})
+        response = self.client.delete(
+            url, {'equipoId': equipo.pk}, format='json', **self.headers
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_incrementar_contador_por_equipo_cliente_id(self):
+        equipo = self._crear_equipo('E-INC')
+        EquipoCliente.objects.create(
+            equipo=equipo, cliente=self.cliente, alias='U1',
+            numero_serie='SN-1', contador_uso=10,
+        )
+        u2 = EquipoCliente.objects.create(
+            equipo=equipo, cliente=self.cliente, alias='U2',
+            numero_serie='SN-2', contador_uso=100,
+        )
+        url = reverse('cliente-incrementar-contador', kwargs={'pk': self.cliente.pk})
+        response = self.client.post(
+            url, {'equipoClienteId': u2.pk, 'cantidad': 25},
+            format='json', **self.headers,
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['contador_uso'], 125)
 
     def test_equipos_delete_missing_equipoId(self):
         url = reverse('cliente-equipos', kwargs={'pk': self.cliente.pk})
